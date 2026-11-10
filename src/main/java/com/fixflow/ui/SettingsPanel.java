@@ -1,6 +1,5 @@
 package com.fixflow.ui;
 
-import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.fixflow.database.DatabaseManager;
 import com.fixflow.database.UserDB;
@@ -159,26 +158,7 @@ public class SettingsPanel extends BasePanel {
         dbCard.add(dbCenter, BorderLayout.CENTER);
         dbCard.add(dbBtnBar, BorderLayout.SOUTH);
 
-        // 3. Theme & Appearance Settings Card
-        JPanel themeCard = new JPanel(new BorderLayout(0, 8));
-        themeCard.setBorder(new CompoundBorder(
-                new TitledBorder("Application Appearance & Theme"),
-                new EmptyBorder(8, 12, 10, 12)
-        ));
-
-        JPanel themeControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        themeControls.add(new JLabel("Interface Theme:"));
-        JButton lightThemeBtn = new JButton("FlatLaf Light");
-        JButton darkThemeBtn = new JButton("FlatLaf Dark");
-
-        lightThemeBtn.addActionListener(e -> switchTheme(false));
-        darkThemeBtn.addActionListener(e -> switchTheme(true));
-
-        themeControls.add(lightThemeBtn);
-        themeControls.add(darkThemeBtn);
-        themeCard.add(themeControls, BorderLayout.CENTER);
-
-        // 4. System Environment Card
+        // 3. System Environment Card
         JPanel sysCard = new JPanel(new GridLayout(3, 2, 6, 4));
         sysCard.setBorder(new CompoundBorder(
                 new TitledBorder("System Environment & Runtime"),
@@ -194,8 +174,6 @@ public class SettingsPanel extends BasePanel {
         contentWrapper.add(credCard);
         contentWrapper.add(Box.createRigidArea(new Dimension(0, 10)));
         contentWrapper.add(dbCard);
-        contentWrapper.add(Box.createRigidArea(new Dimension(0, 10)));
-        contentWrapper.add(themeCard);
         contentWrapper.add(Box.createRigidArea(new Dimension(0, 10)));
         contentWrapper.add(sysCard);
 
@@ -410,22 +388,6 @@ public class SettingsPanel extends BasePanel {
             }
         } else {
             JOptionPane.showMessageDialog(this, "Storage location: " + DatabaseManager.getJdbcUrl(), "Storage Location", JOptionPane.INFORMATION_MESSAGE);
-        }
-    }
-
-    private void switchTheme(boolean dark) {
-        try {
-            if (dark) {
-                FlatDarkLaf.setup();
-            } else {
-                FlatLightLaf.setup();
-            }
-            Window window = SwingUtilities.getWindowAncestor(this);
-            if (window != null) {
-                SwingUtilities.updateComponentTreeUI(window);
-            }
-        } catch (Exception ex) {
-            LOGGER.log(Level.WARNING, "Failed to switch theme", ex);
         }
     }
 }

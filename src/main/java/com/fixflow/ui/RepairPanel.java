@@ -44,7 +44,7 @@ public class RepairPanel extends BasePanel {
     private static final Logger LOGGER = Logger.getLogger(RepairPanel.class.getName());
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"Job #", "Customer", "Device", "Assigned Tech", "Status", "Approval", "Date Received", "Est. Cost ($)"}, 0
+            new Object[]{"Job #", "Customer", "Device", "Assigned Tech", "Status", "Approval", "Date Received", "Est. Cost (LKR)"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -357,7 +357,7 @@ public class RepairPanel extends BasePanel {
                     this,
                     "Customer: " + job.getCustomerName() + " (Tel: " + job.getCustomerPhone() + ")\n" +
                     "Device: " + job.getDeviceSummary() + "\n" +
-                    "Estimated Total Cost: $" + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0) + "\n\n" +
+                    "Estimated Total Cost: LKR " + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0) + "\n\n" +
                     "Please record the customer's approval decision:",
                     "Customer Approval Decision",
                     JOptionPane.YES_NO_CANCEL_OPTION,
@@ -522,7 +522,7 @@ public class RepairPanel extends BasePanel {
 
             if (job.getDiagnosisFindings() != null) {
                 summary.add(new JLabel("Diagnosis: " + job.getDiagnosisFindings()));
-                summary.add(new JLabel("Est. Cost: $" + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0)));
+                summary.add(new JLabel("Est. Cost: LKR " + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0)));
             }
             if (job.getCancellationReason() != null) {
                 summary.add(new JLabel("Cancellation Reason: " + job.getCancellationReason()));
@@ -741,9 +741,9 @@ public class RepairPanel extends BasePanel {
 
         form.add(new JLabel("Diagnosis Findings:*"));
         form.add(findingsScroll);
-        form.add(new JLabel("Estimated Total Cost ($):*"));
+        form.add(new JLabel("Estimated Total Cost (LKR):*"));
         form.add(estCostField);
-        form.add(new JLabel("Labour Charges ($):"));
+        form.add(new JLabel("Labour Charges (LKR):"));
         form.add(labourField);
         form.add(new JLabel("Est. Completion Date:"));
         form.add(estDateField);
@@ -849,7 +849,7 @@ public class RepairPanel extends BasePanel {
 
         // Table for parts used
         DefaultTableModel partsModel = new DefaultTableModel(
-                new Object[]{"Usage ID", "Part ID", "Part Name", "Category", "Quantity", "Unit Price ($)", "Subtotal ($)", "Date Used"}, 0
+                new Object[]{"Usage ID", "Part ID", "Part Name", "Category", "Quantity", "Unit Price (LKR)", "Subtotal (LKR)", "Date Used"}, 0
         ) {
             @Override
             public boolean isCellEditable(int row, int col) {
@@ -861,7 +861,7 @@ public class RepairPanel extends BasePanel {
         partsTable.getColumnModel().getColumn(0).setMaxWidth(70);
         partsTable.getColumnModel().getColumn(1).setMaxWidth(70);
 
-        JLabel totalCostLabel = new JLabel("Total Parts Cost: $0.00");
+        JLabel totalCostLabel = new JLabel("Total Parts Cost: LKR 0.00");
         totalCostLabel.setFont(totalCostLabel.getFont().deriveFont(Font.BOLD, 14f));
         totalCostLabel.setForeground(new Color(0, 102, 204));
 
@@ -884,7 +884,7 @@ public class RepairPanel extends BasePanel {
                             u.getDateUsed()
                     });
                 }
-                totalCostLabel.setText(String.format("Total Parts Cost: $%.2f", totalCost));
+                totalCostLabel.setText(String.format("Total Parts Cost: LKR %.2f", totalCost));
             } catch (SQLException ex) {
                 LOGGER.log(Level.SEVERE, "Failed to load parts used", ex);
                 JOptionPane.showMessageDialog(dialog, "Error loading parts: " + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
@@ -993,7 +993,7 @@ public class RepairPanel extends BasePanel {
             if (selected != null) {
                 SparePart p = selected.part();
                 stockAvailLabel.setText("In Stock: " + p.getAvailableQuantity() + " units");
-                unitPriceLabel.setText(String.format("Unit Price: $%.2f", p.getSellingPrice()));
+                unitPriceLabel.setText(String.format("Unit Price: LKR %.2f", p.getSellingPrice()));
                 ((SpinnerNumberModel) qtySpinner.getModel()).setMaximum(p.getAvailableQuantity());
             }
         };
@@ -1046,7 +1046,7 @@ public class RepairPanel extends BasePanel {
     private record SparePartItem(SparePart part) {
         @Override
         public String toString() {
-            return part.getPartName() + " (" + part.getCategory() + ") - $" + String.format("%.2f", part.getSellingPrice());
+            return part.getPartName() + " (" + part.getCategory() + ") - LKR " + String.format("%.2f", part.getSellingPrice());
         }
     }
 

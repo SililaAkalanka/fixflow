@@ -25,8 +25,45 @@ public class InventoryPanel extends BasePanel {
 
     private static final Logger LOGGER = Logger.getLogger(InventoryPanel.class.getName());
 
+    public static final String[] CATEGORIES = new String[]{
+            "PROCESSORS",
+            "MOTHERBOARDS",
+            "RAM",
+            "STORAGE",
+            "POWER SUPPLY",
+            "COOLERS",
+            "GRAPHIC CARD",
+            "CASING",
+            "LAPTOP ACCESSORIES",
+            "UPS & BATTERIES",
+            "KEYBOARD & MOUSE",
+            "MONITORS",
+            "ACCESSORIES",
+            "LAPTOP COOLING PADS",
+            "COMPUTER REPAIR TOOLS",
+            "LAPTOP REPAIR TOOLS",
+            "SOLDERING TOOLS",
+            "THERMAL PASTE & PADS",
+            "CLEANING MATERIALS",
+            "DIAGNOSTIC TOOLS",
+            "REPLACEMENT ICs & COMPONENTS",
+            "LAPTOP SCREENS",
+            "KEYBOARD REPLACEMENTS",
+            "LAPTOP BATTERIES",
+            "CHARGERS & ADAPTERS",
+            "DATA RECOVERY",
+            "CABLES & CONNECTORS"
+    };
+
+    private static String[] createCategoryFilterOptions() {
+        String[] options = new String[CATEGORIES.length + 1];
+        options[0] = "All Categories";
+        System.arraycopy(CATEGORIES, 0, options, 1, CATEGORIES.length);
+        return options;
+    }
+
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"ID", "Part Name", "Category", "Compatible Model", "Purchase ($)", "Selling ($)", "Stock Qty", "Min Level", "Stock Alert Status"}, 0
+            new Object[]{"ID", "Part Name", "Category", "Compatible Model", "Purchase (LKR)", "Selling (LKR)", "Stock Qty", "Min Level", "Stock Alert Status"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -36,9 +73,7 @@ public class InventoryPanel extends BasePanel {
 
     private final JTable inventoryTable = new JTable(tableModel);
     private final JTextField searchField = new JTextField(18);
-    private final JComboBox<String> categoryCombo = new JComboBox<>(new String[]{
-            "All Categories", "Screen / Display", "Battery", "Charging Port", "Camera", "Housing / Back Glass", "Motherboard / Logic Board", "Speaker / Audio", "Other"
-    });
+    private final JComboBox<String> categoryCombo = new JComboBox<>(createCategoryFilterOptions());
     private final JCheckBox lowStockOnlyCheck = new JCheckBox("Low Stock Only");
     private final JLabel accessBadge = new JLabel();
 
@@ -306,9 +341,7 @@ public class InventoryPanel extends BasePanel {
         JPanel form = new JPanel(new GridLayout(0, 2, 8, 10));
 
         JTextField nameField = new JTextField(isEdit ? partToEdit.getPartName() : "");
-        JComboBox<String> catField = new JComboBox<>(new String[]{
-                "Screen / Display", "Battery", "Charging Port", "Camera", "Housing / Back Glass", "Motherboard / Logic Board", "Speaker / Audio", "Other"
-        });
+        JComboBox<String> catField = new JComboBox<>(CATEGORIES);
         if (isEdit) catField.setSelectedItem(partToEdit.getCategory());
 
         JTextField modelField = new JTextField(isEdit ? partToEdit.getCompatibleDeviceModel() : "");
@@ -327,9 +360,9 @@ public class InventoryPanel extends BasePanel {
         form.add(catField);
         form.add(new JLabel("Compatible Device / Model:*"));
         form.add(modelField);
-        form.add(new JLabel("Purchase Cost ($):*"));
+        form.add(new JLabel("Purchase Cost (LKR):*"));
         form.add(purchaseField);
-        form.add(new JLabel("Selling Price ($):*"));
+        form.add(new JLabel("Selling Price (LKR):*"));
         form.add(sellingField);
         form.add(new JLabel(isEdit ? "Stock Quantity (Current):" : "Initial Stock Quantity:*"));
         form.add(qtyField);

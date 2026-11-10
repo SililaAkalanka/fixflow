@@ -35,7 +35,7 @@ public class PaymentPanel extends BasePanel {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"Payment #", "Job #", "Customer", "Phone", "Device", "Labour ($)", "Parts ($)", "Total Settled ($)", "Method", "Status", "Payment Date"}, 0
+            new Object[]{"Payment #", "Job #", "Customer", "Phone", "Device", "Labour (LKR)", "Parts (LKR)", "Total Settled (LKR)", "Method", "Status", "Payment Date"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int col) {
@@ -233,14 +233,14 @@ public class PaymentPanel extends BasePanel {
 
         JLabel custLabel = new JLabel("-");
         JLabel devLabel = new JLabel("-");
-        JLabel labourLabel = new JLabel("$0.00");
-        JLabel partsLabel = new JLabel("$0.00");
-        JLabel totalLabel = new JLabel("$0.00");
+        JLabel labourLabel = new JLabel("LKR 0.00");
+        JLabel partsLabel = new JLabel("LKR 0.00");
+        JLabel totalLabel = new JLabel("LKR 0.00");
         totalLabel.setFont(totalLabel.getFont().deriveFont(Font.BOLD, 14f));
         totalLabel.setForeground(new Color(0, 102, 204));
 
         JTextField tenderedField = new JTextField(10);
-        JLabel changeLabel = new JLabel("$0.00");
+        JLabel changeLabel = new JLabel("LKR 0.00");
         changeLabel.setFont(changeLabel.getFont().deriveFont(Font.BOLD, 13f));
         changeLabel.setForeground(new Color(16, 124, 65));
 
@@ -271,9 +271,9 @@ public class PaymentPanel extends BasePanel {
                     double total = labour + parts;
                     currentTotal[0] = total;
 
-                    labourLabel.setText(String.format("$%.2f", labour));
-                    partsLabel.setText(String.format("$%.2f", parts));
-                    totalLabel.setText(String.format("$%.2f", total));
+                    labourLabel.setText(String.format("LKR %.2f", labour));
+                    partsLabel.setText(String.format("LKR %.2f", parts));
+                    totalLabel.setText(String.format("LKR %.2f", total));
                     tenderedField.setText(String.format("%.2f", total));
                 } catch (SQLException ex) {
                     LOGGER.log(Level.SEVERE, "Failed to calculate job total cost", ex);
@@ -291,10 +291,10 @@ public class PaymentPanel extends BasePanel {
                     double tendered = Double.parseDouble(tenderedField.getText().trim());
                     double change = tendered - currentTotal[0];
                     if (change >= 0) {
-                        changeLabel.setText(String.format("$%.2f", change));
+                        changeLabel.setText(String.format("LKR %.2f", change));
                         changeLabel.setForeground(new Color(16, 124, 65));
                     } else {
-                        changeLabel.setText(String.format("Underpaid by $%.2f", Math.abs(change)));
+                        changeLabel.setText(String.format("Underpaid by LKR %.2f", Math.abs(change)));
                         changeLabel.setForeground(Color.RED);
                     }
                 } catch (NumberFormatException e) {
@@ -309,7 +309,7 @@ public class PaymentPanel extends BasePanel {
 
         JPanel inputPanel = new JPanel(new GridLayout(2, 2, 8, 8));
         inputPanel.setBorder(new TitledBorder("Cash Settlement"));
-        inputPanel.add(new JLabel("Cash Amount Tendered ($):"));
+        inputPanel.add(new JLabel("Cash Amount Tendered (LKR):"));
         inputPanel.add(tenderedField);
         inputPanel.add(new JLabel("Customer Change:"));
         inputPanel.add(changeLabel);
@@ -342,7 +342,7 @@ public class PaymentPanel extends BasePanel {
                 tendered = Double.parseDouble(tenderedField.getText().trim());
                 if (tendered < currentTotal[0] - 0.001) {
                     JOptionPane.showMessageDialog(dialog,
-                            String.format("Cash tendered ($%.2f) is less than the required total amount ($%.2f).\n" +
+                            String.format("Cash tendered (LKR %.2f) is less than the required total amount (LKR %.2f).\n" +
                                     "Partial payments are not permitted (Business Rule 12).", tendered, currentTotal[0]),
                             "Insufficient Payment", JOptionPane.WARNING_MESSAGE);
                     return;
@@ -361,7 +361,7 @@ public class PaymentPanel extends BasePanel {
                 loadPayments();
 
                 int askPdf = JOptionPane.showConfirmDialog(this,
-                        String.format("Payment #%d recorded successfully for $%.2f CASH!\n" +
+                        String.format("Payment #%d recorded successfully for LKR %.2f CASH!\n" +
                                 "Change Due: %s\n\nWould you like to generate and export the PDF invoice now?",
                                 paymentId, currentTotal[0], changeLabel.getText()),
                         "Payment Complete", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE);
