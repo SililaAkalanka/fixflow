@@ -50,6 +50,15 @@ public class SessionManager {
     }
 
     /**
+     * Obtains the ID of the currently logged-in user.
+     *
+     * @return active user ID, or null if unauthenticated
+     */
+    public static synchronized Integer getCurrentUserId() {
+        return currentUser != null ? currentUser.getUserId() : null;
+    }
+
+    /**
      * Checks if a user is currently logged in.
      *
      * @return true if logged in, false otherwise
