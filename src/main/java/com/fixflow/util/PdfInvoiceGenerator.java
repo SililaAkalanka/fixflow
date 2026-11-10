@@ -236,7 +236,7 @@ public class PdfInvoiceGenerator {
             cs.addRect(margin, tableY - 16, contentWidth, rowHeight);
             cs.fill();
 
-            // Column widths: Description (240), Type (90), Qty (40), Unit ($) (70), Subtotal ($) (75) = 515
+            // Column widths: Description (240), Type (90), Qty (40), Unit (LKR) (70), Subtotal (LKR) (75) = 515
             float colDesc = margin + 8;
             float colType = margin + 250;
             float colQty = margin + 340;
@@ -253,9 +253,9 @@ public class PdfInvoiceGenerator {
             cs.newLineAtOffset(colQty - colType, 0);
             cs.showText("QTY");
             cs.newLineAtOffset(colUnit - colQty, 0);
-            cs.showText("UNIT ($)");
+            cs.showText("UNIT (LKR)");
             cs.newLineAtOffset(colTotal - colUnit, 0);
-            cs.showText("TOTAL ($)");
+            cs.showText("TOTAL (LKR)");
             cs.endText();
 
             tableY -= rowHeight;
@@ -310,22 +310,22 @@ public class PdfInvoiceGenerator {
             double partsTotal = payment.getPartsCost();
             double finalTotal = payment.getTotalRepairCost();
 
-            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Labour Charges:", String.format("$%.2f", labourTotal));
+            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Labour Charges:", String.format("LKR %.2f", labourTotal));
             y -= 14;
-            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Spare Parts Total:", String.format("$%.2f", partsTotal));
+            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Spare Parts Total:", String.format("LKR %.2f", partsTotal));
             y -= 14;
             drawLine(cs, summaryBoxX, y + 2, margin + contentWidth, y + 2, LINE_COLOR, 1f);
 
             cs.setNonStrokingColor(PRIMARY_COLOR);
-            drawSummaryRow(cs, summaryBoxX, y - 8, fontBold, 11, "TOTAL AMOUNT:", String.format("$%.2f", finalTotal));
+            drawSummaryRow(cs, summaryBoxX, y - 8, fontBold, 11, "TOTAL AMOUNT:", String.format("LKR %.2f", finalTotal));
             y -= 22;
 
             cs.setNonStrokingColor(SUCCESS_COLOR);
-            drawSummaryRow(cs, summaryBoxX, y, fontBold, 10, "Amount Paid (CASH):", String.format("$%.2f", payment.getAmountPaid()));
+            drawSummaryRow(cs, summaryBoxX, y, fontBold, 10, "Amount Paid (CASH):", String.format("LKR %.2f", payment.getAmountPaid()));
             y -= 14;
 
             cs.setNonStrokingColor(TEXT_MUTED);
-            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Balance Due:", "$0.00");
+            drawSummaryRow(cs, summaryBoxX, y, fontRegular, 9, "Balance Due:", "LKR 0.00");
             y -= 25;
 
             // --- 6. 30-Day Warranty Notice Box ---

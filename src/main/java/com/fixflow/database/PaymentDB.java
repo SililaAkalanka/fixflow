@@ -81,7 +81,7 @@ public class PaymentDB {
         // Section 7.4 & 8.12: Full cash payment only. No partial payments.
         if (amountPaid < totalCost - 0.001) {
             throw new IllegalArgumentException(String.format(
-                    "Partial payments are not supported. Full amount of $%.2f is required (Attempted: $%.2f).",
+                    "Partial payments are not supported. Full amount of LKR %.2f is required (Attempted: LKR %.2f).",
                     totalCost, amountPaid));
         }
 
@@ -118,13 +118,13 @@ public class PaymentDB {
                 try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
                     psHist.setString(1, recordedByRole != null ? recordedByRole : "Receptionist");
                     psHist.setString(2, now);
-                    psHist.setString(3, String.format("Payment recorded: $%.2f (CASH settled in full). Payment #%d.", totalCost, paymentId));
+                    psHist.setString(3, String.format("Payment recorded: LKR %.2f (CASH settled in full). Payment #%d.", totalCost, paymentId));
                     psHist.setInt(4, jobId);
                     psHist.executeUpdate();
                 }
 
                 conn.commit();
-                LOGGER.info(String.format("Payment #%d successfully recorded for Job #%d: $%.2f CASH.", paymentId, jobId, totalCost));
+                LOGGER.info(String.format("Payment #%d successfully recorded for Job #%d: LKR %.2f CASH.", paymentId, jobId, totalCost));
                 return paymentId;
             } catch (Exception e) {
                 conn.rollback();

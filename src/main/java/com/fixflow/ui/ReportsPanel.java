@@ -57,17 +57,17 @@ public class ReportsPanel extends BasePanel {
 
     // Report Tables & Models
     private final DefaultTableModel repairTableModel = new DefaultTableModel(
-            new Object[]{"Job #", "Received", "Customer", "Phone", "Device", "Technician", "Status", "Approval", "Est. Cost ($)", "Labour ($)", "Completed"}, 0
+            new Object[]{"Job #", "Received", "Customer", "Phone", "Device", "Technician", "Status", "Approval", "Est. Cost (LKR)", "Labour (LKR)", "Completed"}, 0
     ) { @Override public boolean isCellEditable(int r, int c) { return false; } };
     private final JTable repairTable = new JTable(repairTableModel);
 
     private final DefaultTableModel revenueTableModel = new DefaultTableModel(
-            new Object[]{"Payment #", "Payment Date", "Job #", "Customer", "Phone", "Device", "Labour ($)", "Parts ($)", "Settled Total ($)", "Method", "Status"}, 0
+            new Object[]{"Payment #", "Payment Date", "Job #", "Customer", "Phone", "Device", "Labour (LKR)", "Parts (LKR)", "Settled Total (LKR)", "Method", "Status"}, 0
     ) { @Override public boolean isCellEditable(int r, int c) { return false; } };
     private final JTable revenueTable = new JTable(revenueTableModel);
 
     private final DefaultTableModel inventoryTableModel = new DefaultTableModel(
-            new Object[]{"Part ID", "Part Name", "Category", "Compatible Model", "Cost ($)", "Price ($)", "Qty", "Min", "Status", "Valuation ($)", "Retail Potential ($)"}, 0
+            new Object[]{"Part ID", "Part Name", "Category", "Compatible Model", "Cost (LKR)", "Price (LKR)", "Qty", "Min", "Status", "Valuation (LKR)", "Retail Potential (LKR)"}, 0
     ) { @Override public boolean isCellEditable(int r, int c) { return false; } };
     private final JTable inventoryTable = new JTable(inventoryTableModel);
 
@@ -301,7 +301,7 @@ public class ReportsPanel extends BasePanel {
             footerMetric1.setText("Total Jobs in Report: " + total);
             footerMetric2.setText("Completed / Ready: " + completed);
             footerMetric3.setText("Cancelled: " + cancelled);
-            footerMetric4.setText(String.format("Total Labour Billed: $%.2f", totalLabour));
+            footerMetric4.setText(String.format("Total Labour Billed: LKR %.2f", totalLabour));
 
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Failed to generate repair report", ex);
@@ -343,9 +343,9 @@ public class ReportsPanel extends BasePanel {
             }
 
             footerMetric1.setText("Settled Transactions: " + count);
-            footerMetric2.setText(String.format("Total Labour Revenue: $%.2f", totalLabour));
-            footerMetric3.setText(String.format("Total Spare Parts Revenue: $%.2f", totalParts));
-            footerMetric4.setText(String.format("TOTAL CASH COLLECTED: $%.2f", grandTotal));
+            footerMetric2.setText(String.format("Total Labour Revenue: LKR %.2f", totalLabour));
+            footerMetric3.setText(String.format("Total Spare Parts Revenue: LKR %.2f", totalParts));
+            footerMetric4.setText(String.format("TOTAL CASH COLLECTED: LKR %.2f", grandTotal));
 
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Failed to generate revenue report", ex);
@@ -399,7 +399,7 @@ public class ReportsPanel extends BasePanel {
             footerMetric1.setText("Catalog Items: " + uniqueParts);
             footerMetric2.setText("Total Units in Stock: " + totalUnits);
             footerMetric3.setText("Low Stock / Critical: " + lowStockCount);
-            footerMetric4.setText(String.format("Inventory Valuation: $%.2f (Retail: $%.2f)", totalValuation, retailPotential));
+            footerMetric4.setText(String.format("Inventory Valuation: LKR %.2f (Retail: LKR %.2f)", totalValuation, retailPotential));
 
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Failed to generate inventory report", ex);

@@ -4,7 +4,6 @@ import com.fixflow.enums.NavigationItem;
 import com.fixflow.enums.UserRole;
 import com.fixflow.model.User;
 import com.fixflow.util.SessionManager;
-import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 
@@ -28,8 +27,6 @@ public class MainFrame extends JFrame {
     private final Map<NavigationItem, BasePanel> panelMap = new EnumMap<>(NavigationItem.class);
     private final Map<NavigationItem, JButton> navButtonMap = new EnumMap<>(NavigationItem.class);
 
-    private boolean isDarkTheme = false;
-    private JButton themeToggleButton;
     private NavigationItem activeItem = NavigationItem.DASHBOARD;
 
     public MainFrame() {
@@ -99,18 +96,12 @@ public class MainFrame extends JFrame {
         JLabel userBadge = new JLabel("Signed in: " + userName + " [" + roleName + "]");
         userBadge.setFont(new Font("Segoe UI", Font.PLAIN, 12));
 
-        themeToggleButton = new JButton("🌙 Dark");
-        themeToggleButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        themeToggleButton.putClientProperty("JButton.buttonType", "roundRect");
-        themeToggleButton.addActionListener(e -> toggleTheme());
-
         JButton logoutButton = new JButton("Sign Out");
         logoutButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         logoutButton.putClientProperty("JButton.buttonType", "roundRect");
         logoutButton.addActionListener(e -> handleLogout());
 
         controls.add(userBadge);
-        controls.add(themeToggleButton);
         controls.add(logoutButton);
 
         bar.add(brandPanel, BorderLayout.WEST);
@@ -227,25 +218,6 @@ public class MainFrame extends JFrame {
         BasePanel panel = panelMap.get(item);
         if (panel != null) {
             panel.onPanelShown();
-        }
-    }
-
-    /**
-     * Toggles between FlatLaf Light and Dark themes dynamically.
-     */
-    private void toggleTheme() {
-        isDarkTheme = !isDarkTheme;
-        try {
-            if (isDarkTheme) {
-                FlatDarkLaf.setup();
-                themeToggleButton.setText("☀️ Light");
-            } else {
-                FlatLightLaf.setup();
-                themeToggleButton.setText("🌙 Dark");
-            }
-            FlatLaf.updateUI();
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Failed to switch theme: " + ex.getMessage(), "Theme Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 

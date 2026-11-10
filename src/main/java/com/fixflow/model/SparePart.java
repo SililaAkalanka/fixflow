@@ -164,7 +164,7 @@ public class SparePart {
 
     @Override
     public String toString() {
-        return partName + " [" + compatibleDeviceModel + "] ($" + String.format("%.2f", sellingPrice) +
+        return partName + " [" + compatibleDeviceModel + "] (LKR " + String.format("%.2f", sellingPrice) +
                 ", Qty: " + availableQuantity + ")";
     }
 }

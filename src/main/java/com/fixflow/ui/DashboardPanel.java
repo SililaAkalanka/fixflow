@@ -28,7 +28,7 @@ public class DashboardPanel extends BasePanel {
     private final JLabel activeJobsVal = new JLabel("0");
     private final JLabel waitingPartsVal = new JLabel("0");
     private final JLabel readyCollectionVal = new JLabel("0");
-    private final JLabel totalRevenueVal = new JLabel("$0.00");
+    private final JLabel totalRevenueVal = new JLabel("LKR 0.00");
     private final JLabel lowStockVal = new JLabel("0");
 
     // Technician Specific
@@ -46,9 +46,9 @@ public class DashboardPanel extends BasePanel {
 
     // Financial & Inventory Overview Labels
     private final JLabel todayIntakesLbl = new JLabel("0");
-    private final JLabel todayRevenueLbl = new JLabel("$0.00");
-    private final JLabel pendingReceivablesLbl = new JLabel("$0.00");
-    private final JLabel inventoryValuationLbl = new JLabel("$0.00");
+    private final JLabel todayRevenueLbl = new JLabel("LKR 0.00");
+    private final JLabel pendingReceivablesLbl = new JLabel("LKR 0.00");
+    private final JLabel inventoryValuationLbl = new JLabel("LKR 0.00");
     private final JLabel outOfStockLbl = new JLabel("0");
 
     public DashboardPanel() {
@@ -209,7 +209,7 @@ public class DashboardPanel extends BasePanel {
         activeJobsVal.setText(String.valueOf(m.getActiveJobs()));
         waitingPartsVal.setText(String.valueOf(m.getWaitingPartsJobs()));
         readyCollectionVal.setText(String.valueOf(m.getReadyForCollectionJobs()));
-        totalRevenueVal.setText(String.format("$%.2f", m.getTotalRevenue()));
+        totalRevenueVal.setText(String.format("LKR %.2f", m.getTotalRevenue()));
         lowStockVal.setText(String.valueOf(m.getLowStockCount()));
 
         // Technician cards
@@ -226,9 +226,9 @@ public class DashboardPanel extends BasePanel {
 
         // Financial & inventory health
         todayIntakesLbl.setText(String.valueOf(m.getTodayJobs()) + " devices");
-        todayRevenueLbl.setText(String.format("$%.2f", m.getTodayRevenue()));
-        pendingReceivablesLbl.setText(String.format("$%.2f", m.getPendingRevenue()));
-        inventoryValuationLbl.setText(String.format("$%.2f", m.getTotalInventoryValuation()));
+        todayRevenueLbl.setText(String.format("LKR %.2f", m.getTodayRevenue()));
+        pendingReceivablesLbl.setText(String.format("LKR %.2f", m.getPendingRevenue()));
+        inventoryValuationLbl.setText(String.format("LKR %.2f", m.getTotalInventoryValuation()));
         outOfStockLbl.setText(String.valueOf(m.getOutOfStockCount()) + " parts");
     }
 }

@@ -211,7 +211,7 @@ public class RepairDB {
 
         // If requested to advance to WAITING_FOR_APPROVAL
         if (advanceToWaitingApproval && job.getCurrentStatus() != RepairStatus.WAITING_FOR_APPROVAL) {
-            updateStatus(jobId, RepairStatus.WAITING_FOR_APPROVAL, "Diagnosis complete. Waiting for customer approval of estimate: $" + String.format("%.2f", estimatedCost != null ? estimatedCost : 0.0), recordedByRole);
+            updateStatus(jobId, RepairStatus.WAITING_FOR_APPROVAL, "Diagnosis complete. Waiting for customer approval of estimate: LKR " + String.format("%.2f", estimatedCost != null ? estimatedCost : 0.0), recordedByRole);
         }
     }
 

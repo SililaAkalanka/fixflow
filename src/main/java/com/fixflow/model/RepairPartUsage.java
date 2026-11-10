@@ -140,8 +140,8 @@ public class RepairPartUsage {
 
     @Override
     public String toString() {
-        return partName + " (Qty: " + quantity + " @ $" + String.format("%.2f", sellingPriceAtTime) +
-                " = $" + String.format("%.2f", getTotalCost()) + ")";
+        return partName + " (Qty: " + quantity + " @ LKR " + String.format("%.2f", sellingPriceAtTime) +
+                " = LKR " + String.format("%.2f", getTotalCost()) + ")";
     }
 }
 

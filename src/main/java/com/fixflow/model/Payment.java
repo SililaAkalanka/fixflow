@@ -178,7 +178,7 @@ public class Payment {
 
     @Override
     public String toString() {
-        return "Payment #" + paymentId + " [Job #" + jobId + "] - Amount: $" +
+        return "Payment #" + paymentId + " [Job #" + jobId + "] - Amount: LKR " +
                 String.format("%.2f", amountPaid) + " (" + paymentStatus + ")";
     }
 }

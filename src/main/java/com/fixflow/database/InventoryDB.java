@@ -194,7 +194,7 @@ public class InventoryDB {
                 try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
                     psHist.setString(1, issuedByRole != null ? issuedByRole : "Technician");
                     psHist.setString(2, now);
-                    psHist.setString(3, "Issued part: " + quantity + "x " + partName + " @ $" + String.format("%.2f", currentSellingPrice));
+                    psHist.setString(3, "Issued part: " + quantity + "x " + partName + " @ LKR " + String.format("%.2f", currentSellingPrice));
                     psHist.setInt(4, jobId);
                     psHist.executeUpdate();
                 }
