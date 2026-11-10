@@ -135,15 +135,46 @@ public class UserDB {
      * @throws SQLException if a database access error occurs
      */
     public static boolean updatePassword(UserRole role, String newPlainPassword) throws SQLException {
+        return updateCredentials(role, null, newPlainPassword);
+    }
+
+    /**
+     * Updates credentials (username and/or password) for a specific role.
+     * Accessible by Administrator in System Settings (§7.10).
+     *
+     * @param role user role
+     * @param newUsername optional new username (if null or blank, retains current)
+     * @param newPlainPassword new plain-text password
+     * @return true if updated successfully
+     * @throws SQLException if a database error occurs
+     */
+    public static boolean updateCredentials(UserRole role, String newUsername, String newPlainPassword) throws SQLException {
+        if (newPlainPassword == null || newPlainPassword.trim().length() < 6) {
+            throw new IllegalArgumentException("Password must be at least 6 characters long.");
+        }
+
         String newHash = PasswordUtil.hashPassword(newPlainPassword);
         String now = LocalDateTime.now().format(DATE_FORMATTER);
 
-        String sql = "UPDATE users SET password_hash = ?, updated_at = ? WHERE role = ?";
+        String sql;
+        if (newUsername != null && !newUsername.trim().isEmpty()) {
+            sql = "UPDATE users SET username = ?, password_hash = ?, updated_at = ? WHERE role = ?";
+        } else {
+            sql = "UPDATE users SET password_hash = ?, updated_at = ? WHERE role = ?";
+        }
+
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, newHash);
-            ps.setString(2, now);
-            ps.setString(3, role.name());
+            if (newUsername != null && !newUsername.trim().isEmpty()) {
+                ps.setString(1, newUsername.trim());
+                ps.setString(2, newHash);
+                ps.setString(3, now);
+                ps.setString(4, role.name());
+            } else {
+                ps.setString(1, newHash);
+                ps.setString(2, now);
+                ps.setString(3, role.name());
+            }
             return ps.executeUpdate() > 0;
         }
     }
