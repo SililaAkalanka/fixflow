@@ -1,0 +1,34 @@
+# Target build directory
+target/
+
+# IDE and Editor files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.nb-gradle/
+*.sublime-project
+*.sublime-workspace
+
+# Compiled class files
+*.class
+
+# SQLite local database files and journals
+*.db
+*.sqlite
+*.db-journal
+*.db-wal
+*.db-shm
+backups/
+
+# Log files and temporary files
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
