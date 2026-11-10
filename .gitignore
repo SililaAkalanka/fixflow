@@ -1,5 +1,6 @@
 # Target build directory
 target/
+dependency-reduced-pom.xml
 
 # IDE and Editor files
 .idea/

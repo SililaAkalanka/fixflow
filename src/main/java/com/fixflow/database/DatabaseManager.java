@@ -2,9 +2,12 @@ package com.fixflow.database;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -88,6 +91,90 @@ public class DatabaseManager {
      */
     public static synchronized void setCustomJdbcUrl(String url) {
         customJdbcUrl = url;
+    }
+
+    /**
+     * Resolves the active SQLite database file on disk.
+     *
+     * @return {@link File} object representing the SQLite database, or null if in-memory
+     */
+    public static synchronized File getDatabaseFile() {
+        String url = getJdbcUrl();
+        if (url != null && url.startsWith("jdbc:sqlite:") && !url.contains(":memory:")) {
+            String path = url.substring("jdbc:sqlite:".length());
+            if (path.contains("?")) {
+                path = path.substring(0, path.indexOf("?"));
+            }
+            return new File(path);
+        }
+        return null;
+    }
+
+    /**
+     * Creates a consistent, uncorrupted backup copy of the SQLite database.
+     * Flushes WAL checkpoint and performs VACUUM INTO / copy to destination.
+     * Implements Section 7.10 of the FixFlow Project Specification.
+     *
+     * @param destinationFile destination file to write the backup
+     * @throws SQLException if a database error occurs
+     * @throws IOException if a file I/O error occurs
+     */
+    public static synchronized void backupDatabase(File destinationFile) throws SQLException, IOException {
+        if (destinationFile.exists()) {
+            destinationFile.delete();
+        }
+
+        // 1. Flush WAL checkpoint so main database file has latest changes
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA wal_checkpoint(FULL);");
+
+            // 2. Attempt VACUUM INTO for live atomic backup
+            try {
+                String destPath = destinationFile.getAbsolutePath().replace("\\", "/");
+                stmt.execute("VACUUM INTO '" + destPath + "';");
+                LOGGER.info("Database backed up via VACUUM INTO to: " + destinationFile.getAbsolutePath());
+                return;
+            } catch (SQLException e) {
+                LOGGER.log(Level.INFO, "VACUUM INTO not supported or failed, falling back to file copy", e);
+            }
+        }
+
+        // 3. Fallback: Copy database file directly after checkpoint
+        File dbFile = getDatabaseFile();
+        if (dbFile != null && dbFile.exists()) {
+            Files.copy(dbFile.toPath(), destinationFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            LOGGER.info("Database backed up via file copy to: " + destinationFile.getAbsolutePath());
+        } else {
+            throw new IOException("Cannot locate source database file to copy.");
+        }
+    }
+
+    /**
+     * Validates whether a file is a valid FixFlow SQLite database containing the required core schema tables.
+     *
+     * @param candidateFile candidate SQLite database file
+     * @return true if valid, false otherwise
+     */
+    public static boolean validateDatabaseFile(File candidateFile) {
+        if (candidateFile == null || !candidateFile.exists() || candidateFile.length() < 100) {
+            return false;
+        }
+
+        String testUrl = "jdbc:sqlite:" + candidateFile.getAbsolutePath();
+        try (Connection conn = DriverManager.getConnection(testUrl);
+             Statement stmt = conn.createStatement()) {
+            for (String table : CORE_TABLES) {
+                try (ResultSet rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='" + table + "'")) {
+                    if (!rs.next()) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
     }
 
     /**
