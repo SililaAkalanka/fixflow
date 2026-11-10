@@ -2,14 +2,18 @@ package com.fixflow.ui;
 
 import com.fixflow.database.CustomerDB;
 import com.fixflow.database.DeviceDB;
+import com.fixflow.database.InventoryDB;
 import com.fixflow.database.RepairDB;
 import com.fixflow.database.TechnicianDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.enums.UserRole;
+import com.fixflow.exception.InsufficientStockException;
 import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
 import com.fixflow.model.RepairJob;
+import com.fixflow.model.RepairPartUsage;
+import com.fixflow.model.SparePart;
 import com.fixflow.model.StatusHistory;
 import com.fixflow.model.Technician;
 import com.fixflow.util.SessionManager;
@@ -56,6 +60,7 @@ public class RepairPanel extends BasePanel {
     private JButton newJobBtn;
     private JButton assignTechBtn;
     private JButton recordDiagnosisBtn;
+    private JButton partsUsedBtn;
     private JButton approvalBtn;
     private JButton updateStatusBtn;
     private JButton viewHistoryBtn;
@@ -151,6 +156,9 @@ public class RepairPanel extends BasePanel {
         updateStatusBtn = new JButton("Update Status");
         updateStatusBtn.addActionListener(e -> handleUpdateStatus());
 
+        partsUsedBtn = new JButton("Parts Used");
+        partsUsedBtn.addActionListener(e -> handleManagePartsUsed());
+
         viewHistoryBtn = new JButton("Job History & Notes");
         viewHistoryBtn.addActionListener(e -> handleViewHistory());
 
@@ -159,6 +167,7 @@ public class RepairPanel extends BasePanel {
         deleteJobBtn.addActionListener(e -> handleDeleteJob());
 
         bottomBar.add(viewHistoryBtn);
+        bottomBar.add(partsUsedBtn);
         bottomBar.add(assignTechBtn);
         bottomBar.add(recordDiagnosisBtn);
         bottomBar.add(approvalBtn);
@@ -735,6 +744,246 @@ public class RepairPanel extends BasePanel {
 
         dialog.setContentPane(panel);
         dialog.setVisible(true);
+    }
+
+    private void handleManagePartsUsed() {
+        int selectedRow = repairTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a repair job first.", "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int jobId = (int) tableModel.getValueAt(selectedRow, 0);
+        RepairJob job;
+        try {
+            job = RepairDB.getRepairJobById(jobId);
+            if (job == null) {
+                JOptionPane.showMessageDialog(this, "Repair job not found.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+        } catch (SQLException ex) {
+            LOGGER.log(Level.SEVERE, "Failed to retrieve job", ex);
+            JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Parts Issued - Job #" + jobId, Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setSize(780, 500);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel mainPanel = new JPanel(new BorderLayout(0, 12));
+        mainPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        // Header with Job Details
+        JPanel headerPanel = new JPanel(new GridLayout(2, 2, 10, 5));
+        headerPanel.setBorder(new TitledBorder("Job Information"));
+        headerPanel.add(new JLabel("Customer: " + (job.getCustomerName() != null ? job.getCustomerName() : "N/A")));
+        headerPanel.add(new JLabel("Device: " + (job.getDeviceSummary() != null ? job.getDeviceSummary() : "N/A")));
+        headerPanel.add(new JLabel("Status: " + job.getCurrentStatus().getDisplayName()));
+        headerPanel.add(new JLabel("Assigned Tech: " + (job.getTechnicianName() != null ? job.getTechnicianName() : "Unassigned")));
+        mainPanel.add(headerPanel, BorderLayout.NORTH);
+
+        // Table for parts used
+        DefaultTableModel partsModel = new DefaultTableModel(
+                new Object[]{"Usage ID", "Part ID", "Part Name", "Category", "Quantity", "Unit Price ($)", "Subtotal ($)", "Date Used"}, 0
+        ) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+        JTable partsTable = new JTable(partsModel);
+        partsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        partsTable.getColumnModel().getColumn(0).setMaxWidth(70);
+        partsTable.getColumnModel().getColumn(1).setMaxWidth(70);
+
+        JLabel totalCostLabel = new JLabel("Total Parts Cost: $0.00");
+        totalCostLabel.setFont(totalCostLabel.getFont().deriveFont(Font.BOLD, 14f));
+        totalCostLabel.setForeground(new Color(0, 102, 204));
+
+        Runnable refreshParts = () -> {
+            try {
+                partsModel.setRowCount(0);
+                List<RepairPartUsage> usages = InventoryDB.getPartsUsedForJob(jobId);
+                double totalCost = 0.0;
+                for (RepairPartUsage u : usages) {
+                    double subtotal = u.getSubtotal();
+                    totalCost += subtotal;
+                    partsModel.addRow(new Object[]{
+                            u.getUsageId(),
+                            u.getPartId(),
+                            u.getPartName(),
+                            u.getPartCategory(),
+                            u.getQuantity(),
+                            String.format("%.2f", u.getSellingPriceAtTime()),
+                            String.format("%.2f", subtotal),
+                            u.getDateUsed()
+                    });
+                }
+                totalCostLabel.setText(String.format("Total Parts Cost: $%.2f", totalCost));
+            } catch (SQLException ex) {
+                LOGGER.log(Level.SEVERE, "Failed to load parts used", ex);
+                JOptionPane.showMessageDialog(dialog, "Error loading parts: " + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+            }
+        };
+
+        refreshParts.run();
+
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+        centerPanel.add(new JScrollPane(partsTable), BorderLayout.CENTER);
+        centerPanel.add(totalCostLabel, BorderLayout.SOUTH);
+        mainPanel.add(centerPanel, BorderLayout.CENTER);
+
+        // Actions panel
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JButton addPartBtn = new JButton("+ Issue Part to Job");
+        JButton removePartBtn = new JButton("Remove Part (Return to Stock)");
+        JButton closeBtn = new JButton("Close");
+
+        UserRole role = SessionManager.getCurrentRole();
+        boolean canManageParts = (role == UserRole.ADMINISTRATOR || role == UserRole.MANAGER || role == UserRole.TECHNICIAN || role == UserRole.INVENTORY_STAFF);
+        boolean jobActive = (job.getCurrentStatus() != RepairStatus.COLLECTED && job.getCurrentStatus() != RepairStatus.CANCELLED);
+
+        addPartBtn.setEnabled(canManageParts && jobActive);
+        removePartBtn.setEnabled(canManageParts && jobActive);
+
+        addPartBtn.addActionListener(e -> showIssuePartDialog(dialog, jobId, refreshParts));
+
+        removePartBtn.addActionListener(e -> {
+            int row = partsTable.getSelectedRow();
+            if (row == -1) {
+                JOptionPane.showMessageDialog(dialog, "Please select a part usage record to remove.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int usageId = (int) partsModel.getValueAt(row, 0);
+            String partName = (String) partsModel.getValueAt(row, 2);
+            int qty = (int) partsModel.getValueAt(row, 4);
+
+            int confirm = JOptionPane.showConfirmDialog(dialog,
+                    "Are you sure you want to return " + qty + "x \"" + partName + "\" to inventory stock?",
+                    "Confirm Part Return", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                try {
+                    boolean ok = InventoryDB.removePartUsage(usageId);
+                    if (ok) {
+                        JOptionPane.showMessageDialog(dialog, "Part usage removed and stock restored successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                        refreshParts.run();
+                    } else {
+                        JOptionPane.showMessageDialog(dialog, "Record not found.", "Warning", JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (SQLException ex) {
+                    LOGGER.log(Level.SEVERE, "Failed to remove part usage", ex);
+                    JOptionPane.showMessageDialog(dialog, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+
+        closeBtn.addActionListener(e -> dialog.dispose());
+
+        actionPanel.add(addPartBtn);
+        actionPanel.add(removePartBtn);
+        actionPanel.add(closeBtn);
+        mainPanel.add(actionPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(mainPanel);
+        dialog.setVisible(true);
+    }
+
+    private void showIssuePartDialog(JDialog parent, int jobId, Runnable onSaved) {
+        List<SparePart> availableParts;
+        try {
+            availableParts = InventoryDB.getAllParts().stream()
+                    .filter(p -> p.getAvailableQuantity() > 0)
+                    .toList();
+        } catch (SQLException ex) {
+            LOGGER.log(Level.SEVERE, "Failed to load parts", ex);
+            JOptionPane.showMessageDialog(parent, "Failed to load parts catalog: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        if (availableParts.isEmpty()) {
+            JOptionPane.showMessageDialog(parent, "No spare parts currently have available stock in the catalog.", "Out of Stock", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        JDialog issueDialog = new JDialog(parent, "Issue Spare Part to Job #" + jobId, Dialog.ModalityType.APPLICATION_MODAL);
+        issueDialog.setSize(520, 260);
+        issueDialog.setLocationRelativeTo(parent);
+
+        JPanel panel = new JPanel(new BorderLayout(0, 15));
+        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        JPanel form = new JPanel(new GridLayout(3, 2, 10, 10));
+
+        JComboBox<SparePartItem> partCombo = new JComboBox<>();
+        for (SparePart p : availableParts) {
+            partCombo.addItem(new SparePartItem(p));
+        }
+
+        JLabel stockAvailLabel = new JLabel();
+        JLabel unitPriceLabel = new JLabel();
+        JSpinner qtySpinner = new JSpinner(new SpinnerNumberModel(1, 1, 999, 1));
+
+        Runnable updatePartInfo = () -> {
+            SparePartItem selected = (SparePartItem) partCombo.getSelectedItem();
+            if (selected != null) {
+                SparePart p = selected.part();
+                stockAvailLabel.setText("In Stock: " + p.getAvailableQuantity() + " units");
+                unitPriceLabel.setText(String.format("Unit Price: $%.2f", p.getSellingPrice()));
+                ((SpinnerNumberModel) qtySpinner.getModel()).setMaximum(p.getAvailableQuantity());
+            }
+        };
+
+        partCombo.addActionListener(e -> updatePartInfo.run());
+        updatePartInfo.run();
+
+        form.add(new JLabel("Select Part:"));
+        form.add(partCombo);
+        form.add(new JLabel("Stock & Pricing:"));
+        JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        infoPanel.add(stockAvailLabel);
+        infoPanel.add(unitPriceLabel);
+        form.add(infoPanel);
+        form.add(new JLabel("Quantity to Issue:"));
+        form.add(qtySpinner);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> issueDialog.dispose());
+        JButton issueBtn = new JButton("Confirm Issue");
+        issueBtn.addActionListener(e -> {
+            SparePartItem selected = (SparePartItem) partCombo.getSelectedItem();
+            if (selected == null) return;
+            int qty = (int) qtySpinner.getValue();
+            try {
+                String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Technician";
+                InventoryDB.issuePartToJob(jobId, selected.part().getPartId(), qty, roleName);
+                JOptionPane.showMessageDialog(issueDialog, "Part issued successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                issueDialog.dispose();
+                onSaved.run();
+            } catch (InsufficientStockException ex) {
+                JOptionPane.showMessageDialog(issueDialog, ex.getMessage(), "Insufficient Stock", JOptionPane.WARNING_MESSAGE);
+            } catch (SQLException ex) {
+                LOGGER.log(Level.SEVERE, "Failed to issue part", ex);
+                JOptionPane.showMessageDialog(issueDialog, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        btnPanel.add(cancelBtn);
+        btnPanel.add(issueBtn);
+
+        panel.add(form, BorderLayout.CENTER);
+        panel.add(btnPanel, BorderLayout.SOUTH);
+
+        issueDialog.setContentPane(panel);
+        issueDialog.setVisible(true);
+    }
+
+    private record SparePartItem(SparePart part) {
+        @Override
+        public String toString() {
+            return part.getPartName() + " (" + part.getCategory() + ") - $" + String.format("%.2f", part.getSellingPrice());
+        }
     }
 
     private record CustomerItem(int customerId, String label) {
