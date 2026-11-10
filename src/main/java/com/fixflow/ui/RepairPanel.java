@@ -3,6 +3,7 @@ package com.fixflow.ui;
 import com.fixflow.database.CustomerDB;
 import com.fixflow.database.DeviceDB;
 import com.fixflow.database.InventoryDB;
+import com.fixflow.database.PaymentDB;
 import com.fixflow.database.RepairDB;
 import com.fixflow.database.TechnicianDB;
 import com.fixflow.enums.RepairStatus;
@@ -11,11 +12,13 @@ import com.fixflow.exception.InsufficientStockException;
 import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
+import com.fixflow.model.Payment;
 import com.fixflow.model.RepairJob;
 import com.fixflow.model.RepairPartUsage;
 import com.fixflow.model.SparePart;
 import com.fixflow.model.StatusHistory;
 import com.fixflow.model.Technician;
+import com.fixflow.util.PdfInvoiceGenerator;
 import com.fixflow.util.SessionManager;
 import com.fixflow.util.ValidationUtil;
 
@@ -25,6 +28,7 @@ import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.io.File;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Set;
@@ -63,6 +67,7 @@ public class RepairPanel extends BasePanel {
     private JButton partsUsedBtn;
     private JButton approvalBtn;
     private JButton updateStatusBtn;
+    private JButton invoiceBtn;
     private JButton viewHistoryBtn;
     private JButton deleteJobBtn;
 
@@ -156,6 +161,9 @@ public class RepairPanel extends BasePanel {
         updateStatusBtn = new JButton("Update Status");
         updateStatusBtn.addActionListener(e -> handleUpdateStatus());
 
+        invoiceBtn = new JButton("PDF Invoice");
+        invoiceBtn.addActionListener(e -> handleExportPdfInvoice());
+
         partsUsedBtn = new JButton("Parts Used");
         partsUsedBtn.addActionListener(e -> handleManagePartsUsed());
 
@@ -172,6 +180,7 @@ public class RepairPanel extends BasePanel {
         bottomBar.add(recordDiagnosisBtn);
         bottomBar.add(approvalBtn);
         bottomBar.add(updateStatusBtn);
+        bottomBar.add(invoiceBtn);
         bottomBar.add(deleteJobBtn);
 
         contentArea.add(topBar, BorderLayout.NORTH);
@@ -421,11 +430,66 @@ public class RepairPanel extends BasePanel {
                     loadRepairJobs();
                 } catch (InvalidStatusTransitionException | IllegalArgumentException ex) {
                     JOptionPane.showMessageDialog(this, ex.getMessage(), "Validation Error", JOptionPane.WARNING_MESSAGE);
+                } catch (IllegalStateException ex) {
+                    // Enforces Business Rule 13: A device cannot be collected until full payment is recorded
+                    int payChoice = JOptionPane.showConfirmDialog(this,
+                            ex.getMessage() + "\n\nWould you like to open the cash payment dialog now?",
+                            "Payment Required Before Collection", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    if (payChoice == JOptionPane.YES_OPTION) {
+                        PaymentPanel paymentPanel = new PaymentPanel();
+                        paymentPanel.showRecordPaymentDialog(job);
+                        loadRepairJobs();
+                    }
                 }
             }
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Error updating status", ex);
             JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void handleExportPdfInvoice() {
+        Integer jobId = getSelectedJobId();
+        if (jobId == null) return;
+
+        try {
+            Payment payment = PaymentDB.getPaymentByJobId(jobId);
+            if (payment == null) {
+                JOptionPane.showMessageDialog(this,
+                        "No settled payment record found for Job #" + jobId + ".\n" +
+                        "An invoice can only be generated after full cash payment is recorded (Section 7.4).",
+                        "Payment Required", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Save FixFlow PDF Invoice");
+            chooser.setSelectedFile(new File("Invoice_INV-" + String.format("%05d", payment.getPaymentId()) + "_Job-" + jobId + ".pdf"));
+
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File targetFile = chooser.getSelectedFile();
+                if (!targetFile.getName().toLowerCase().endsWith(".pdf")) {
+                    targetFile = new File(targetFile.getAbsolutePath() + ".pdf");
+                }
+
+                PdfInvoiceGenerator.generateInvoice(payment.getPaymentId(), targetFile);
+
+                int openChoice = JOptionPane.showConfirmDialog(this,
+                        "PDF invoice successfully generated and saved to:\n" + targetFile.getAbsolutePath() +
+                        "\n\nWould you like to open the invoice now?",
+                        "Invoice Generated", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE);
+
+                if (openChoice == JOptionPane.YES_OPTION && Desktop.isDesktopSupported()) {
+                    try {
+                        Desktop.getDesktop().open(targetFile);
+                    } catch (Exception openEx) {
+                        LOGGER.log(Level.WARNING, "Failed to open PDF file automatically", openEx);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            LOGGER.log(Level.SEVERE, "Failed to generate invoice", ex);
+            JOptionPane.showMessageDialog(this, "Failed to generate PDF invoice: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 

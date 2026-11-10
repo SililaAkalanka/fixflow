@@ -49,6 +49,10 @@ public class RepairPartUsage {
         return quantity * sellingPriceAtTime;
     }
 
+    public double getSubtotal() {
+        return getTotalCost();
+    }
+
     public int getUsageId() {
         return usageId;
     }

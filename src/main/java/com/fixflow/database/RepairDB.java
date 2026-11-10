@@ -293,6 +293,13 @@ public class RepairDB {
         // Validate lifecycle transition rules
         job.validateTransition(targetStatus);
 
+        // Enforce Business Rule 13: A device cannot be collected until full payment is recorded
+        if (targetStatus == RepairStatus.COLLECTED) {
+            if (!PaymentDB.isJobFullyPaid(jobId)) {
+                throw new IllegalStateException("A device cannot be collected until full payment is recorded (Business Rule 13).");
+            }
+        }
+
         if (targetStatus == RepairStatus.CANCELLED && (reasonOrNotes == null || reasonOrNotes.trim().isEmpty())) {
             throw new IllegalArgumentException("A cancellation reason must be provided when cancelling a repair job.");
         }
@@ -341,6 +348,15 @@ public class RepairDB {
 
                 conn.commit();
                 LOGGER.info("Job #" + jobId + " transitioned from " + job.getCurrentStatus() + " to " + targetStatus);
+
+                // Enforce Business Rule 14: Every completed repair receives a fixed 30-day warranty upon collection
+                if (targetStatus == RepairStatus.COLLECTED) {
+                    try {
+                        WarrantyDB.autoCreateWarrantyForJob(jobId);
+                    } catch (Exception ex) {
+                        LOGGER.log(Level.WARNING, "Auto-creation of 30-day warranty for Job #" + jobId + " failed", ex);
+                    }
+                }
             } catch (SQLException e) {
                 conn.rollback();
                 LOGGER.log(Level.SEVERE, "Failed to update status for Job #" + jobId + ", rolled back.", e);
@@ -618,7 +634,7 @@ public class RepairDB {
         }
     }
 
-    private static RepairJob mapResultSetToRepairJob(ResultSet rs) throws SQLException {
+    public static RepairJob mapResultSetToRepairJob(ResultSet rs) throws SQLException {
         RepairJob job = new RepairJob();
         job.setJobId(rs.getInt("job_id"));
         job.setCustomerId(rs.getInt("customer_id"));
