@@ -58,10 +58,10 @@ $UserHome = if ($env:MAVEN_USER_HOME) { $env:MAVEN_USER_HOME } else { [System.En
 $MavenUserHome = Join-Path $UserHome ".m2\wrapper\dists"
 $DistDir = Join-Path $MavenUserHome "$DistName"
 
-# Locate mvn.cmd
+# Locate existing mvn.cmd across wrapper cache or specific dist folder
 $MvnCmd = $null
-if (Test-Path $DistDir) {
-    $ExistingMvn = Get-ChildItem -Path $DistDir -Filter "mvn.cmd" -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+if (Test-Path $MavenUserHome) {
+    $ExistingMvn = Get-ChildItem -Path $MavenUserHome -Filter "mvn.cmd" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($ExistingMvn) {
         $MvnCmd = $ExistingMvn.FullName
     }
@@ -86,7 +86,7 @@ if (-not $MvnCmd) {
     Expand-Archive -Path $ZipPath -DestinationPath $DistDir -Force
     Remove-Item -Path $ZipPath -Force
 
-    $ExistingMvn = Get-ChildItem -Path $DistDir -Filter "mvn.cmd" -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    $ExistingMvn = Get-ChildItem -Path $DistDir -Filter "mvn.cmd" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($ExistingMvn) {
         $MvnCmd = $ExistingMvn.FullName
     } else {
