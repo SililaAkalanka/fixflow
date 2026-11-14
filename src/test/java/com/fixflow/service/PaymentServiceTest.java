@@ -105,7 +105,7 @@ public class PaymentServiceTest {
     }
 
     @Test
-    @DisplayName("Verify invalid amounts (zero or negative) rejected")
+    @DisplayName("Verify invalid amounts (zero, negative, NaN, infinity) rejected")
     void testInvalidAmounts() throws Exception {
         int jobId = createTestJob(5000.0, 0.0);
 
@@ -114,6 +114,15 @@ public class PaymentServiceTest {
         );
         assertThrows(IllegalArgumentException.class, () ->
                 PaymentService.recordPayment(jobId, -500.0, null, "Negative")
+        );
+        assertThrows(IllegalArgumentException.class, () ->
+                PaymentService.recordPayment(jobId, Double.NaN, null, "NaN")
+        );
+        assertThrows(IllegalArgumentException.class, () ->
+                PaymentService.recordPayment(jobId, Double.POSITIVE_INFINITY, null, "Infinity")
+        );
+        assertThrows(IllegalArgumentException.class, () ->
+                PaymentService.recordPayment(jobId, Double.NEGATIVE_INFINITY, null, "-Infinity")
         );
     }
 }

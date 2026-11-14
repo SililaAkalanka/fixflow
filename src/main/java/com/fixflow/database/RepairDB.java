@@ -76,7 +76,7 @@ public class RepairDB {
     }
 
     /**
-     * Assigns a technician to a repair job.
+     * Persists a technician assignment to a repair job in the database.
      *
      * @param jobId repair job ID
      * @param technicianId technician ID
@@ -84,14 +84,6 @@ public class RepairDB {
      * @throws SQLException if a database error occurs
      */
     public static boolean assignTechnician(int jobId, int technicianId) throws SQLException {
-        Technician tech = TechnicianDB.getTechnicianById(technicianId);
-        if (tech == null) {
-            throw new IllegalArgumentException("Technician #" + technicianId + " not found.");
-        }
-        if (!tech.isActive()) {
-            throw new IllegalArgumentException("Cannot assign technician '" + tech.getName() + "': Technician is marked as Inactive.");
-        }
-
         String now = LocalDateTime.now().format(DATE_FORMATTER);
         String sql = "UPDATE repair_jobs SET technician_id = ?, updated_at = ? WHERE job_id = ?";
 

@@ -33,8 +33,9 @@ public class ReportDB {
      *
      * @param technicianId optional technician ID filter
      * @return populated DashboardMetrics
+     * @throws SQLException if a database error occurs
      */
-    public static DashboardMetrics getDashboardMetrics(Integer technicianId) {
+    public static DashboardMetrics getDashboardMetrics(Integer technicianId) throws SQLException {
         DashboardMetrics metrics = new DashboardMetrics();
         String today = LocalDate.now().toString();
 
@@ -145,9 +146,6 @@ public class ReportDB {
                     metrics.setTotalInventoryValuation(rs.getDouble("val"));
                 }
             }
-
-        } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "Failed to load dashboard metrics", e);
         }
 
         return metrics;

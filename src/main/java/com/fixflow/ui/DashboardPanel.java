@@ -12,6 +12,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
+import java.sql.SQLException;
 
 /**
  * Operational Dashboard presenting real-time business KPIs, status distribution,
@@ -203,33 +204,39 @@ public class DashboardPanel extends BasePanel {
             techId = SessionManager.getCurrentUserId();
         }
 
-        DashboardMetrics m = ReportDB.getDashboardMetrics(techId);
+        try {
+            DashboardMetrics m = ReportDB.getDashboardMetrics(techId);
 
-        totalJobsVal.setText(String.valueOf(m.getTotalJobs()));
-        activeJobsVal.setText(String.valueOf(m.getActiveJobs()));
-        completedJobsVal.setText(String.valueOf(m.getCompletedJobs()));
-        collectedJobsVal.setText(String.valueOf(m.getCollectedJobs()));
-        totalRevenueVal.setText(String.format("LKR %.2f", m.getTotalRevenue()));
-        lowStockVal.setText(String.valueOf(m.getLowStockCount()));
+            totalJobsVal.setText(String.valueOf(m.getTotalJobs()));
+            activeJobsVal.setText(String.valueOf(m.getActiveJobs()));
+            completedJobsVal.setText(String.valueOf(m.getCompletedJobs()));
+            collectedJobsVal.setText(String.valueOf(m.getCollectedJobs()));
+            totalRevenueVal.setText(String.format("LKR %.2f", m.getTotalRevenue()));
+            lowStockVal.setText(String.valueOf(m.getLowStockCount()));
 
-        // Technician cards
-        techActiveVal.setText(String.valueOf(m.getTechAssignedActive()));
-        techDoneTodayVal.setText(String.valueOf(m.getTechAssignedCompletedToday()));
+            // Technician cards
+            techActiveVal.setText(String.valueOf(m.getTechAssignedActive()));
+            techDoneTodayVal.setText(String.valueOf(m.getTechAssignedCompletedToday()));
 
-        // Status breakdown
-        receivedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.RECEIVED)));
-        diagnosingCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.DIAGNOSING)));
-        inProgressCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.IN_PROGRESS)));
-        completedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COMPLETED)));
-        collectedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COLLECTED)));
-        cancelledCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.CANCELLED)));
+            // Status breakdown
+            receivedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.RECEIVED)));
+            diagnosingCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.DIAGNOSING)));
+            inProgressCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.IN_PROGRESS)));
+            completedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COMPLETED)));
+            collectedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COLLECTED)));
+            cancelledCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.CANCELLED)));
 
-        // Overview
-        totalCustomersLbl.setText(String.valueOf(m.getTotalCustomers()));
-        totalTechniciansLbl.setText(String.valueOf(m.getTotalTechnicians()));
-        todayIntakesLbl.setText(String.valueOf(m.getTodayJobs()) + " devices");
-        todayRevenueLbl.setText(String.format("LKR %.2f", m.getTodayRevenue()));
-        inventoryValuationLbl.setText(String.format("LKR %.2f", m.getTotalInventoryValuation()));
-        outOfStockLbl.setText(String.valueOf(m.getOutOfStockCount()) + " parts");
+            // Overview
+            totalCustomersLbl.setText(String.valueOf(m.getTotalCustomers()));
+            totalTechniciansLbl.setText(String.valueOf(m.getTotalTechnicians()));
+            todayIntakesLbl.setText(String.valueOf(m.getTodayJobs()) + " devices");
+            todayRevenueLbl.setText(String.format("LKR %.2f", m.getTodayRevenue()));
+            inventoryValuationLbl.setText(String.format("LKR %.2f", m.getTotalInventoryValuation()));
+            outOfStockLbl.setText(String.valueOf(m.getOutOfStockCount()) + " parts");
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this,
+                    "Failed to refresh dashboard metrics: " + e.getMessage(),
+                    "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 }

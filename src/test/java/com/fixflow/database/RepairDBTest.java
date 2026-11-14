@@ -68,16 +68,10 @@ class RepairDBTest {
     }
 
     @Test
-    @DisplayName("Verify technician assignment rejects inactive technician")
-    void testTechnicianAssignmentInactiveRejection() throws SQLException {
+    @DisplayName("Verify technician assignment persistence")
+    void testTechnicianAssignmentPersistence() throws SQLException {
         RepairJob job = new RepairJob(customerId, deviceId, "Battery swelling");
         int jobId = RepairDB.createRepairJob(job);
-
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> RepairDB.assignTechnician(jobId, inactiveTechId)
-        );
-        assertTrue(ex.getMessage().contains("Inactive"));
 
         boolean assigned = RepairDB.assignTechnician(jobId, activeTechId);
         assertTrue(assigned);

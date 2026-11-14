@@ -5,11 +5,13 @@ import com.fixflow.database.DatabaseConnection;
 import com.fixflow.database.DatabaseInitializer;
 import com.fixflow.database.DeviceDB;
 import com.fixflow.database.RepairDB;
+import com.fixflow.database.TechnicianDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
 import com.fixflow.model.RepairJob;
+import com.fixflow.model.Technician;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -131,5 +133,37 @@ public class RepairServiceTest {
                 RepairService.updateStatus(jobId, RepairStatus.CANCELLED, "Customer decided not to repair")
         );
         assertEquals(RepairStatus.CANCELLED, RepairService.getRepairJobById(jobId).getCurrentStatus());
+    }
+
+    @Test
+    @DisplayName("Verify technician assignment in RepairService validates existence and active status")
+    void testTechnicianAssignmentValidation() throws Exception {
+        Technician activeTech = new Technician("Active Tech", "0771112233", "Hardware", true);
+        int activeTechId = TechnicianDB.createTechnician(activeTech);
+
+        Technician inactiveTech = new Technician("Inactive Tech", "0774445566", "Software", false);
+        int inactiveTechId = TechnicianDB.createTechnician(inactiveTech);
+
+        RepairJob job = new RepairJob(customerId, deviceId, "Battery issue");
+        int jobId = RepairService.createRepairJob(job);
+
+        // Non-existent technician
+        IllegalArgumentException notFoundEx = assertThrows(
+                IllegalArgumentException.class,
+                () -> RepairService.assignTechnician(jobId, 99999)
+        );
+        assertTrue(notFoundEx.getMessage().contains("not found"));
+
+        // Inactive technician
+        IllegalArgumentException inactiveEx = assertThrows(
+                IllegalArgumentException.class,
+                () -> RepairService.assignTechnician(jobId, inactiveTechId)
+        );
+        assertTrue(inactiveEx.getMessage().contains("Inactive"));
+
+        // Active technician
+        boolean assigned = RepairService.assignTechnician(jobId, activeTechId);
+        assertTrue(assigned);
+        assertEquals(Integer.valueOf(activeTechId), RepairService.getRepairJobById(jobId).getTechnicianId());
     }
 }

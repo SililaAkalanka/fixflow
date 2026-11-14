@@ -40,6 +40,7 @@ public class DatabaseInitializer {
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement()) {
 
+            stmt.execute("PRAGMA foreign_keys = OFF;");
             conn.setAutoCommit(false);
             try {
                 for (String ddl : ddlStatements) {
@@ -59,6 +60,7 @@ public class DatabaseInitializer {
                 LOGGER.log(Level.SEVERE, "Failed to initialize or migrate database schema, rolling back.", e);
                 throw e;
             } finally {
+                stmt.execute("PRAGMA foreign_keys = ON;");
                 conn.setAutoCommit(true);
             }
         }
@@ -94,24 +96,73 @@ public class DatabaseInitializer {
                         "warranty_start_date = (SELECT w.start_date FROM warranties w JOIN repair_jobs r ON w.job_id = r.job_id WHERE r.device_id = devices.device_id LIMIT 1), " +
                         "warranty_expiry_date = (SELECT w.expiry_date FROM warranties w JOIN repair_jobs r ON w.job_id = r.job_id WHERE r.device_id = devices.device_id LIMIT 1) " +
                         "WHERE EXISTS (SELECT 1 FROM warranties w JOIN repair_jobs r ON w.job_id = r.job_id WHERE r.device_id = devices.device_id)";
-                try {
-                    stmt.execute(copyWarranties);
-                } catch (SQLException e) {
-                    LOGGER.log(Level.WARNING, "Failed to copy legacy warranties, skipping copy step", e);
-                }
+                stmt.execute(copyWarranties);
                 stmt.execute("DROP TABLE IF EXISTS warranties;");
             }
 
-            // 3. Repair Jobs migration: add notes column and map old statuses
-            Set<String> repairColumns = getTableColumns(conn, "repair_jobs");
-            if (!repairColumns.isEmpty()) {
-                if (!repairColumns.contains("notes")) {
-                    stmt.execute("ALTER TABLE repair_jobs ADD COLUMN notes TEXT;");
-                }
+            // 3. Repair Jobs migration: safely migrate old statuses and constraints to 6-status lifecycle
+            if (hasLegacyRepairStatusConstraint(conn)) {
+                LOGGER.info("Rebuilding repair_jobs to update status CHECK constraint to 6-status lifecycle...");
+                stmt.execute("CREATE TABLE IF NOT EXISTS repair_jobs_migrated (" +
+                        "job_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                        "customer_id INTEGER NOT NULL, " +
+                        "device_id INTEGER NOT NULL, " +
+                        "technician_id INTEGER, " +
+                        "date_received TEXT NOT NULL, " +
+                        "initial_problem TEXT NOT NULL, " +
+                        "current_status TEXT NOT NULL CHECK (current_status IN ('RECEIVED', 'DIAGNOSING', 'IN_PROGRESS', 'COMPLETED', 'COLLECTED', 'CANCELLED')), " +
+                        "diagnosis_findings TEXT, " +
+                        "estimated_cost REAL, " +
+                        "labour_charges REAL DEFAULT 0.0, " +
+                        "estimated_completion_date TEXT, " +
+                        "actual_completion_date TEXT, " +
+                        "notes TEXT, " +
+                        "created_at TEXT NOT NULL, " +
+                        "updated_at TEXT NOT NULL, " +
+                        "FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT, " +
+                        "FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE RESTRICT, " +
+                        "FOREIGN KEY (technician_id) REFERENCES technicians(technician_id) ON DELETE RESTRICT" +
+                        ");");
 
-                // Map legacy complex statuses to the simplified 6-status lifecycle
-                stmt.execute("UPDATE repair_jobs SET current_status = 'IN_PROGRESS' WHERE current_status IN ('WAITING_FOR_APPROVAL', 'WAITING_FOR_PARTS', 'REPAIRING');");
-                stmt.execute("UPDATE repair_jobs SET current_status = 'COMPLETED' WHERE current_status = 'READY_FOR_COLLECTION';");
+                Set<String> repairCols = getTableColumns(conn, "repair_jobs");
+                String notesExpr = repairCols.contains("notes") ? "notes" : (repairCols.contains("cancellation_reason") ? "cancellation_reason" : "NULL");
+                String labourExpr = repairCols.contains("labour_charges") ? "COALESCE(labour_charges, 0.0)" : "0.0";
+                String diagExpr = repairCols.contains("diagnosis_findings") ? "diagnosis_findings" : "NULL";
+                String estCostExpr = repairCols.contains("estimated_cost") ? "estimated_cost" : "NULL";
+                String estDateExpr = repairCols.contains("estimated_completion_date") ? "estimated_completion_date" : "NULL";
+                String actDateExpr = repairCols.contains("actual_completion_date") ? "actual_completion_date" : "NULL";
+
+                stmt.execute("INSERT INTO repair_jobs_migrated (" +
+                        "job_id, customer_id, device_id, technician_id, date_received, initial_problem, " +
+                        "current_status, diagnosis_findings, estimated_cost, labour_charges, " +
+                        "estimated_completion_date, actual_completion_date, notes, created_at, updated_at) " +
+                        "SELECT job_id, customer_id, device_id, technician_id, date_received, initial_problem, " +
+                        "CASE " +
+                        "  WHEN UPPER(current_status) IN ('WAITING_FOR_APPROVAL', 'WAITING_FOR_PARTS', 'REPAIRING') THEN 'IN_PROGRESS' " +
+                        "  WHEN UPPER(current_status) = 'READY_FOR_COLLECTION' THEN 'COMPLETED' " +
+                        "  ELSE current_status " +
+                        "END, " +
+                        diagExpr + ", " + estCostExpr + ", " + labourExpr + ", " +
+                        estDateExpr + ", " + actDateExpr + ", " + notesExpr + ", created_at, updated_at " +
+                        "FROM repair_jobs;");
+
+                stmt.execute("DROP TABLE repair_jobs;");
+                stmt.execute("ALTER TABLE repair_jobs_migrated RENAME TO repair_jobs;");
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_repair_jobs_customer ON repair_jobs(customer_id);");
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_repair_jobs_device ON repair_jobs(device_id);");
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_repair_jobs_technician ON repair_jobs(technician_id);");
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_repair_jobs_status ON repair_jobs(current_status);");
+            } else {
+                Set<String> repairColumns = getTableColumns(conn, "repair_jobs");
+                if (!repairColumns.isEmpty()) {
+                    if (!repairColumns.contains("notes")) {
+                        stmt.execute("ALTER TABLE repair_jobs ADD COLUMN notes TEXT;");
+                    }
+
+                    // Map legacy complex statuses to the simplified 6-status lifecycle
+                    stmt.execute("UPDATE repair_jobs SET current_status = 'IN_PROGRESS' WHERE current_status IN ('WAITING_FOR_APPROVAL', 'WAITING_FOR_PARTS', 'REPAIRING');");
+                    stmt.execute("UPDATE repair_jobs SET current_status = 'COMPLETED' WHERE current_status = 'READY_FOR_COLLECTION';");
+                }
             }
 
             // 4. Payments migration: remove UNIQUE(job_id) constraint to support multiple partial payments
@@ -178,6 +229,34 @@ public class DatabaseInitializer {
             }
         }
         return columns;
+    }
+
+    /**
+     * Checks whether repair_jobs table contains legacy statuses in its CHECK constraint.
+     */
+    private static boolean hasLegacyRepairStatusConstraint(Connection conn) throws SQLException {
+        if (!tableExists(conn, "repair_jobs")) {
+            return false;
+        }
+
+        String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='repair_jobs'";
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                String tableSql = rs.getString(1);
+                if (tableSql != null) {
+                    String upper = tableSql.toUpperCase();
+                    if (upper.contains("WAITING_FOR_APPROVAL") || upper.contains("WAITING_FOR_PARTS")
+                            || upper.contains("REPAIRING") || upper.contains("READY_FOR_COLLECTION")) {
+                        return true;
+                    }
+                    if (upper.contains("CHECK") && upper.contains("CURRENT_STATUS") && !upper.contains("IN_PROGRESS")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**

@@ -1,9 +1,11 @@
 package com.fixflow.service;
 
 import com.fixflow.database.RepairDB;
+import com.fixflow.database.TechnicianDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.RepairJob;
+import com.fixflow.model.Technician;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -77,9 +79,22 @@ public class RepairService {
     }
 
     /**
-     * Assigns a technician to a repair job.
+     * Assigns a technician to a repair job after validating technician existence and active status.
+     *
+     * @param jobId repair job ID
+     * @param technicianId technician ID
+     * @return true if updated
+     * @throws SQLException if a database error occurs
+     * @throws IllegalArgumentException if technician does not exist or is inactive
      */
     public static boolean assignTechnician(int jobId, int technicianId) throws SQLException {
+        Technician tech = TechnicianDB.getTechnicianById(technicianId);
+        if (tech == null) {
+            throw new IllegalArgumentException("Technician #" + technicianId + " not found.");
+        }
+        if (!tech.isActive()) {
+            throw new IllegalArgumentException("Cannot assign technician '" + tech.getName() + "': Technician is marked as Inactive.");
+        }
         return RepairDB.assignTechnician(jobId, technicianId);
     }
 

@@ -112,8 +112,8 @@ public class PaymentService {
             throw new IllegalArgumentException("Repair Job #" + jobId + " does not exist.");
         }
 
-        if (amount <= 0) {
-            throw new IllegalArgumentException("Payment amount must be greater than zero.");
+        if (Double.isNaN(amount) || Double.isInfinite(amount) || amount <= 0) {
+            throw new IllegalArgumentException("Payment amount must be a valid positive number.");
         }
 
         double balance = getRemainingBalance(jobId);
