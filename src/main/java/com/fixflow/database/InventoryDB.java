@@ -188,17 +188,6 @@ public class InventoryDB {
                     psUsage.executeUpdate();
                 }
 
-                // 4. Log part usage in repair status history
-                String histSql = "INSERT INTO repair_status_history (job_id, from_status, to_status, changed_by_role, change_date, notes) " +
-                                 "SELECT job_id, current_status, current_status, ?, ?, ? FROM repair_jobs WHERE job_id = ?";
-                try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
-                    psHist.setString(1, issuedByRole != null ? issuedByRole : "Technician");
-                    psHist.setString(2, now);
-                    psHist.setString(3, "Issued part: " + quantity + "x " + partName + " @ LKR " + String.format("%.2f", currentSellingPrice));
-                    psHist.setInt(4, jobId);
-                    psHist.executeUpdate();
-                }
-
                 conn.commit();
                 LOGGER.info("Issued " + quantity + "x " + partName + " to Job #" + jobId + " (Deducted from stock).");
             } catch (Exception e) {

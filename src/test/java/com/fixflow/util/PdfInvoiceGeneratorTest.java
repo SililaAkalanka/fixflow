@@ -1,16 +1,17 @@
 package com.fixflow.util;
 
 import com.fixflow.database.CustomerDB;
-import com.fixflow.database.DatabaseManager;
+import com.fixflow.database.DatabaseConnection;
+import com.fixflow.database.DatabaseInitializer;
 import com.fixflow.database.DeviceDB;
 import com.fixflow.database.InventoryDB;
-import com.fixflow.database.PaymentDB;
 import com.fixflow.database.RepairDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
 import com.fixflow.model.RepairJob;
 import com.fixflow.model.SparePart;
+import com.fixflow.service.PaymentService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,14 +29,14 @@ public class PdfInvoiceGeneratorTest {
     @BeforeEach
     void setUp() throws Exception {
         tempDbFile = File.createTempFile("fixflow_pdf_test_", ".db");
-        DatabaseManager.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
-        DatabaseManager.initializeDatabase();
+        DatabaseConnection.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
+        DatabaseInitializer.initializeDatabase();
         tempPdfFile = File.createTempFile("fixflow_test_invoice_", ".pdf");
     }
 
     @AfterEach
     void tearDown() {
-        DatabaseManager.setCustomJdbcUrl(null);
+        DatabaseConnection.setCustomJdbcUrl(null);
         if (tempDbFile != null && tempDbFile.exists()) tempDbFile.delete();
         if (tempPdfFile != null && tempPdfFile.exists()) tempPdfFile.delete();
     }
@@ -50,19 +51,21 @@ public class PdfInvoiceGeneratorTest {
 
         // 2. Create and complete repair job
         RepairJob job = new RepairJob(custId, devId, "Liquid spill on keyboard and power rail short");
-        int jobId = RepairDB.createRepairJob(job, "Receptionist");
-        RepairDB.recordDiagnosis(jobId, "Ultrasonic cleaning & keyboard top-case replaced", 180.0, 75.0, "2026-11-20", true, "Lead Tech");
-        RepairDB.recordCustomerApproval(jobId, true, null, "Receptionist");
+        job.setLabourCharges(7500.0);
+        int jobId = RepairDB.createRepairJob(job);
+        RepairDB.recordDiagnosis(jobId, "Ultrasonic cleaning & keyboard top-case replaced", 16000.0, 7500.0, "2026-11-20");
 
-        // 3. Issue spare part: MacBook Keyboard @ $85.00
-        SparePart part = new SparePart("MacBook Pro M1 Topcase", "Keyboards", "MacBook Pro M1", 45.0, 85.0, 5, 1);
+        // 3. Issue spare part: MacBook Keyboard @ LKR 8500.00
+        SparePart part = new SparePart("MacBook Pro M1 Topcase", "Keyboards", "MacBook Pro M1", 4500.0, 8500.0, 5, 1);
         int partId = InventoryDB.createPart(part);
         InventoryDB.issuePartToJob(jobId, partId, 1, "Lead Tech");
 
-        RepairDB.updateStatus(jobId, RepairStatus.READY_FOR_COLLECTION, "Repaired and thoroughly tested", "Lead Tech");
+        RepairDB.updateStatus(jobId, RepairStatus.DIAGNOSING, "Diagnosing");
+        RepairDB.updateStatus(jobId, RepairStatus.IN_PROGRESS, "Repairing");
+        RepairDB.updateStatus(jobId, RepairStatus.COMPLETED, "Repaired and tested");
 
-        // Total should be $75 (labour) + $85 (parts) = $160.00
-        int paymentId = PaymentDB.recordCashPayment(jobId, 160.0, "2026-11-10 11:30:00", "Receptionist");
+        // Total should be 7500 (labour) + 8500 (parts) = 16000.00
+        int paymentId = PaymentService.recordPayment(jobId, 16000.0, "2026-11-10 11:30:00", "Full payment");
         assertTrue(paymentId > 0);
 
         // 4. Generate PDF Invoice
@@ -81,4 +84,3 @@ public class PdfInvoiceGeneratorTest {
         }
     }
 }
-

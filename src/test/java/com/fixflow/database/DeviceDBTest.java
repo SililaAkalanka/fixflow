@@ -7,36 +7,36 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class DeviceDBTest {
 
-    private Connection sharedMemoryConnection;
+    private File tempDbFile;
     private int testCustomerId;
 
     @BeforeEach
-    void setUp() throws SQLException {
-        String testUrl = "jdbc:sqlite:file:devdb_test?mode=memory&cache=shared";
-        DatabaseManager.setCustomJdbcUrl(testUrl);
-
-        sharedMemoryConnection = DatabaseManager.getConnection();
-        DatabaseManager.initializeDatabase();
+    void setUp() throws Exception {
+        tempDbFile = File.createTempFile("fixflow_dev_test_", ".db");
+        DatabaseConnection.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
+        DatabaseInitializer.initializeDatabase();
 
         Customer customer = new Customer("Charlie Brown", "0788889999", "charlie@test.com", "77 Elm St");
         testCustomerId = CustomerDB.createCustomer(customer);
     }
 
     @AfterEach
-    void tearDown() throws SQLException {
-        if (sharedMemoryConnection != null && !sharedMemoryConnection.isClosed()) {
-            sharedMemoryConnection.close();
+    void tearDown() {
+        DatabaseConnection.setCustomJdbcUrl(null);
+        if (tempDbFile != null && tempDbFile.exists()) {
+            tempDbFile.delete();
         }
-        DatabaseManager.setCustomJdbcUrl(null);
     }
 
     @Test
@@ -58,6 +58,34 @@ class DeviceDBTest {
         // Verify joined customer fields
         assertEquals("Charlie Brown", retrieved.getCustomerName());
         assertEquals("0788889999", retrieved.getCustomerPhone());
+    }
+
+    @Test
+    @DisplayName("Verify embedded warranty persistence and validity check")
+    void testDeviceWarrantyPersistenceAndCheck() throws SQLException {
+        Device device = new Device(testCustomerId, "Laptop", "Apple", "MacBook Pro", "SN-MBP16", "Space Gray", "MagSafe");
+        LocalDate now = LocalDate.now();
+        device.setWarrantyMonths(12);
+        device.setWarrantyStartDate(now.toString());
+        device.setWarrantyExpiryDate(now.plusMonths(12).toString());
+
+        int devId = DeviceDB.createDevice(device);
+        assertTrue(devId > 0);
+
+        Device retrieved = DeviceDB.getDeviceById(devId);
+        assertNotNull(retrieved);
+        assertEquals(12, retrieved.getWarrantyMonths());
+        assertEquals(now.toString(), retrieved.getWarrantyStartDate());
+        assertEquals(now.plusMonths(12).toString(), retrieved.getWarrantyExpiryDate());
+        assertTrue(retrieved.isUnderWarranty(), "Device should be under active warranty");
+        assertTrue(DeviceDB.isDeviceUnderWarranty(devId));
+
+        // Test expired warranty
+        retrieved.setWarrantyStartDate(now.minusMonths(24).toString());
+        retrieved.setWarrantyExpiryDate(now.minusMonths(12).toString());
+        DeviceDB.updateDevice(retrieved);
+
+        assertFalse(DeviceDB.isDeviceUnderWarranty(devId), "Expired warranty must report false");
     }
 
     @Test
@@ -89,7 +117,7 @@ class DeviceDBTest {
         Device device = new Device(testCustomerId, "Smartphone", "Google", "Pixel 7", "SN-PX7", null, null);
         int devId = DeviceDB.createDevice(device);
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO repair_jobs (customer_id, device_id, date_received, initial_problem, current_status, created_at, updated_at) " +
                              "VALUES (?, ?, datetime('now'), 'Battery issue', 'RECEIVED', datetime('now'), datetime('now'))")) {
@@ -102,4 +130,3 @@ class DeviceDBTest {
         assertTrue(ex.getMessage().contains("Historical repair records are associated"));
     }
 }
-

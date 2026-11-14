@@ -7,17 +7,18 @@ import java.util.Map;
 
 /**
  * Aggregated metric snapshot for the operational dashboard.
- * Implements Section 7.8 of the FixFlow Project Specification.
  */
 public class DashboardMetrics {
 
     private int totalJobs;
     private int todayJobs;
     private int activeJobs;
-    private int waitingPartsJobs;
-    private int readyForCollectionJobs;
+    private int completedJobs;
     private int collectedJobs;
     private int cancelledJobs;
+
+    private int totalCustomers;
+    private int totalTechnicians;
 
     private double totalRevenue;
     private double todayRevenue;
@@ -62,20 +63,12 @@ public class DashboardMetrics {
         this.activeJobs = activeJobs;
     }
 
-    public int getWaitingPartsJobs() {
-        return waitingPartsJobs;
+    public int getCompletedJobs() {
+        return completedJobs;
     }
 
-    public void setWaitingPartsJobs(int waitingPartsJobs) {
-        this.waitingPartsJobs = waitingPartsJobs;
-    }
-
-    public int getReadyForCollectionJobs() {
-        return readyForCollectionJobs;
-    }
-
-    public void setReadyForCollectionJobs(int readyForCollectionJobs) {
-        this.readyForCollectionJobs = readyForCollectionJobs;
+    public void setCompletedJobs(int completedJobs) {
+        this.completedJobs = completedJobs;
     }
 
     public int getCollectedJobs() {
@@ -92,6 +85,22 @@ public class DashboardMetrics {
 
     public void setCancelledJobs(int cancelledJobs) {
         this.cancelledJobs = cancelledJobs;
+    }
+
+    public int getTotalCustomers() {
+        return totalCustomers;
+    }
+
+    public void setTotalCustomers(int totalCustomers) {
+        this.totalCustomers = totalCustomers;
+    }
+
+    public int getTotalTechnicians() {
+        return totalTechnicians;
+    }
+
+    public void setTotalTechnicians(int totalTechnicians) {
+        this.totalTechnicians = totalTechnicians;
     }
 
     public double getTotalRevenue() {
@@ -158,16 +167,17 @@ public class DashboardMetrics {
         this.techAssignedCompletedToday = techAssignedCompletedToday;
     }
 
-    public Map<RepairStatus, Integer> getStatusCounts() {
-        return statusCounts;
-    }
-
-    public void setStatusCount(RepairStatus status, int count) {
-        statusCounts.put(status, count);
-    }
-
     public int getStatusCount(RepairStatus status) {
         return statusCounts.getOrDefault(status, 0);
     }
-}
 
+    public void setStatusCount(RepairStatus status, int count) {
+        if (status != null) {
+            statusCounts.put(status, count);
+        }
+    }
+
+    public Map<RepairStatus, Integer> getStatusCounts() {
+        return statusCounts;
+    }
+}

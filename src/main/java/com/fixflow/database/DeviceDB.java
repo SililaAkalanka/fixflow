@@ -7,14 +7,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Data access operations for electronic device records.
- * Implements Section 7.2 of the FixFlow Project Specification.
+ * Data access operations for electronic device records and basic warranty support.
  */
 public class DeviceDB {
 
@@ -28,8 +28,9 @@ public class DeviceDB {
      * @throws SQLException if a database error occurs
      */
     public static int createDevice(Device device) throws SQLException {
-        String sql = "INSERT INTO devices (customer_id, category, brand, model, serial_number, colour, accessories, created_at) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO devices (customer_id, category, brand, model, serial_number, colour, accessories, " +
+                     "warranty_months, warranty_start_date, warranty_expiry_date, created_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         String now = LocalDateTime.now().format(DATE_FORMATTER);
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -41,7 +42,10 @@ public class DeviceDB {
             ps.setString(5, device.getSerialNumber() != null && !device.getSerialNumber().trim().isEmpty() ? device.getSerialNumber().trim() : null);
             ps.setString(6, device.getColour() != null && !device.getColour().trim().isEmpty() ? device.getColour().trim() : null);
             ps.setString(7, device.getAccessories() != null && !device.getAccessories().trim().isEmpty() ? device.getAccessories().trim() : null);
-            ps.setString(8, now);
+            ps.setInt(8, device.getWarrantyMonths() != null ? device.getWarrantyMonths() : 0);
+            ps.setString(9, device.getWarrantyStartDate());
+            ps.setString(10, device.getWarrantyExpiryDate());
+            ps.setString(11, now);
 
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -57,14 +61,15 @@ public class DeviceDB {
     }
 
     /**
-     * Updates an existing device's details.
+     * Updates an existing device's details and warranty info.
      *
      * @param device device with updated fields
      * @return true if updated, false if not found
      * @throws SQLException if a database error occurs
      */
     public static boolean updateDevice(Device device) throws SQLException {
-        String sql = "UPDATE devices SET category = ?, brand = ?, model = ?, serial_number = ?, colour = ?, accessories = ? " +
+        String sql = "UPDATE devices SET category = ?, brand = ?, model = ?, serial_number = ?, colour = ?, accessories = ?, " +
+                     "warranty_months = ?, warranty_start_date = ?, warranty_expiry_date = ? " +
                      "WHERE device_id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -75,15 +80,45 @@ public class DeviceDB {
             ps.setString(4, device.getSerialNumber() != null && !device.getSerialNumber().trim().isEmpty() ? device.getSerialNumber().trim() : null);
             ps.setString(5, device.getColour() != null && !device.getColour().trim().isEmpty() ? device.getColour().trim() : null);
             ps.setString(6, device.getAccessories() != null && !device.getAccessories().trim().isEmpty() ? device.getAccessories().trim() : null);
-            ps.setInt(7, device.getDeviceId());
+            ps.setInt(7, device.getWarrantyMonths() != null ? device.getWarrantyMonths() : 0);
+            ps.setString(8, device.getWarrantyStartDate());
+            ps.setString(9, device.getWarrantyExpiryDate());
+            ps.setInt(10, device.getDeviceId());
 
             return ps.executeUpdate() > 0;
         }
     }
 
     /**
+     * Updates the warranty information for a device.
+     */
+    public static boolean updateDeviceWarranty(int deviceId, int warrantyMonths, String startDate, String expiryDate) throws SQLException {
+        String sql = "UPDATE devices SET warranty_months = ?, warranty_start_date = ?, warranty_expiry_date = ? WHERE device_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, warrantyMonths);
+            ps.setString(2, startDate);
+            ps.setString(3, expiryDate);
+            ps.setInt(4, deviceId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    /**
+     * Checks if a device is currently under active warranty.
+     *
+     * @param deviceId device ID
+     * @return true if valid warranty exists, false otherwise
+     * @throws SQLException if database error occurs
+     */
+    public static boolean isDeviceUnderWarranty(int deviceId) throws SQLException {
+        Device d = getDeviceById(deviceId);
+        return d != null && d.isUnderWarranty();
+    }
+
+    /**
      * Deletes a device record.
-     * Blocked if repair records exist for this device (Section 7.10).
+     * Blocked if repair records exist for this device.
      *
      * @param deviceId ID of the device to delete
      * @return true if deleted
@@ -92,7 +127,7 @@ public class DeviceDB {
     public static boolean deleteDevice(int deviceId) throws SQLException {
         if (hasRepairHistory(deviceId)) {
             throw new SQLException("Cannot delete Device #" + deviceId + ": Historical repair records are associated with this device. " +
-                    "Operational and financial history must be preserved.");
+                    "Operational history must be preserved.");
         }
 
         String sql = "DELETE FROM devices WHERE device_id = ?";
@@ -104,38 +139,14 @@ public class DeviceDB {
     }
 
     /**
-     * Checks if a device has any associated repair records.
-     *
-     * @param deviceId device ID
-     * @return true if repair records exist, false otherwise
-     * @throws SQLException if a database error occurs
-     */
-    public static boolean hasRepairHistory(int deviceId) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM repair_jobs WHERE device_id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, deviceId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1) > 0;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Retrieves a device by its ID, with customer information joined.
-     *
-     * @param deviceId device ID
-     * @return {@link Device} object, or null if not found
-     * @throws SQLException if a database error occurs
+     * Retrieves a device by its ID.
      */
     public static Device getDeviceById(int deviceId) throws SQLException {
-        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, d.colour, d.accessories, d.created_at, " +
-                     "c.full_name, c.phone " +
+        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, " +
+                     "d.colour, d.accessories, d.warranty_months, d.warranty_start_date, d.warranty_expiry_date, d.created_at, " +
+                     "c.full_name AS customer_name, c.phone AS customer_phone " +
                      "FROM devices d " +
-                     "JOIN customers c ON d.customer_id = c.customer_id " +
+                     "LEFT JOIN customers c ON d.customer_id = c.customer_id " +
                      "WHERE d.device_id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -151,44 +162,15 @@ public class DeviceDB {
     }
 
     /**
-     * Retrieves the device associated with a customer ID.
-     *
-     * @param customerId customer ID
-     * @return {@link Device} object, or null if not found
-     * @throws SQLException if a database error occurs
-     */
-    public static Device getDeviceByCustomerId(int customerId) throws SQLException {
-        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, d.colour, d.accessories, d.created_at, " +
-                     "c.full_name, c.phone " +
-                     "FROM devices d " +
-                     "JOIN customers c ON d.customer_id = c.customer_id " +
-                     "WHERE d.customer_id = ? " +
-                     "ORDER BY d.device_id DESC LIMIT 1";
-
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, customerId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return mapResultSetToDevice(rs);
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Retrieves all devices with joined customer details ordered by newest to oldest.
-     *
-     * @return list of devices
-     * @throws SQLException if a database error occurs
+     * Retrieves all devices registered in the system.
      */
     public static List<Device> getAllDevices() throws SQLException {
         List<Device> list = new ArrayList<>();
-        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, d.colour, d.accessories, d.created_at, " +
-                     "c.full_name, c.phone " +
+        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, " +
+                     "d.colour, d.accessories, d.warranty_months, d.warranty_start_date, d.warranty_expiry_date, d.created_at, " +
+                     "c.full_name AS customer_name, c.phone AS customer_phone " +
                      "FROM devices d " +
-                     "JOIN customers c ON d.customer_id = c.customer_id " +
+                     "LEFT JOIN customers c ON d.customer_id = c.customer_id " +
                      "ORDER BY d.device_id DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -202,54 +184,21 @@ public class DeviceDB {
     }
 
     /**
-     * Searches devices with an optional category filter.
-     *
-     * @param query search text for brand, model, serial, or customer
-     * @param category category filter, or null/"All" for no filter
-     * @return matching devices
-     * @throws SQLException if a database error occurs
+     * Retrieves all devices belonging to a specific customer.
      */
-    public static List<Device> searchDevices(String query, String category) throws SQLException {
+    public static List<Device> getDevicesByCustomerId(int customerId) throws SQLException {
         List<Device> list = new ArrayList<>();
-        StringBuilder sql = new StringBuilder(
-                "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, d.colour, d.accessories, d.created_at, " +
-                "c.full_name, c.phone " +
-                "FROM devices d " +
-                "JOIN customers c ON d.customer_id = c.customer_id WHERE 1=1 "
-        );
-
-        boolean hasQuery = query != null && !query.trim().isEmpty();
-        boolean hasCategory = category != null && !category.trim().isEmpty() && !category.equalsIgnoreCase("All Categories") && !category.equalsIgnoreCase("All");
-
-        if (hasQuery) {
-            sql.append("AND (LOWER(d.brand) LIKE ? OR LOWER(d.model) LIKE ? OR LOWER(d.serial_number) LIKE ? " +
-                       "OR LOWER(c.full_name) LIKE ? OR c.phone LIKE ? OR CAST(d.device_id AS TEXT) = ?) ");
-        }
-
-        if (hasCategory) {
-            sql.append("AND LOWER(d.category) = LOWER(?) ");
-        }
-
-        sql.append("ORDER BY d.device_id DESC");
+        String sql = "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, " +
+                     "d.colour, d.accessories, d.warranty_months, d.warranty_start_date, d.warranty_expiry_date, d.created_at, " +
+                     "c.full_name AS customer_name, c.phone AS customer_phone " +
+                     "FROM devices d " +
+                     "LEFT JOIN customers c ON d.customer_id = c.customer_id " +
+                     "WHERE d.customer_id = ? " +
+                     "ORDER BY d.device_id DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            int paramIndex = 1;
-
-            if (hasQuery) {
-                String wildcard = "%" + query.trim().toLowerCase() + "%";
-                ps.setString(paramIndex++, wildcard);
-                ps.setString(paramIndex++, wildcard);
-                ps.setString(paramIndex++, wildcard);
-                ps.setString(paramIndex++, wildcard);
-                ps.setString(paramIndex++, wildcard);
-                ps.setString(paramIndex++, query.trim());
-            }
-
-            if (hasCategory) {
-                ps.setString(paramIndex++, category.trim());
-            }
-
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, customerId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     list.add(mapResultSetToDevice(rs));
@@ -259,21 +208,93 @@ public class DeviceDB {
         return list;
     }
 
-    private static Device mapResultSetToDevice(ResultSet rs) throws SQLException {
-        int id = rs.getInt("device_id");
-        int customerId = rs.getInt("customer_id");
-        String category = rs.getString("category");
-        String brand = rs.getString("brand");
-        String model = rs.getString("model");
-        String serialNumber = rs.getString("serial_number");
-        String colour = rs.getString("colour");
-        String accessories = rs.getString("accessories");
-        String createdAt = rs.getString("created_at");
+    /**
+     * Retrieves the primary or first device registered for a customer.
+     */
+    public static Device getDeviceByCustomerId(int customerId) throws SQLException {
+        List<Device> devices = getDevicesByCustomerId(customerId);
+        return devices.isEmpty() ? null : devices.get(0);
+    }
 
-        Device dev = new Device(id, customerId, category, brand, model, serialNumber, colour, accessories, createdAt);
-        dev.setCustomerName(rs.getString("full_name"));
-        dev.setCustomerPhone(rs.getString("phone"));
-        return dev;
+    /**
+     * Searches devices by keyword across brand, model, serial number, and customer name.
+     */
+    public static List<Device> searchDevices(String query, String categoryFilter) throws SQLException {
+        List<Device> list = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+                "SELECT d.device_id, d.customer_id, d.category, d.brand, d.model, d.serial_number, " +
+                "d.colour, d.accessories, d.warranty_months, d.warranty_start_date, d.warranty_expiry_date, d.created_at, " +
+                "c.full_name AS customer_name, c.phone AS customer_phone " +
+                "FROM devices d " +
+                "LEFT JOIN customers c ON d.customer_id = c.customer_id WHERE 1=1 "
+        );
+
+        List<Object> params = new ArrayList<>();
+
+        if (query != null && !query.trim().isEmpty()) {
+            sql.append("AND (d.brand LIKE ? OR d.model LIKE ? OR d.serial_number LIKE ? OR c.full_name LIKE ?) ");
+            String term = "%" + query.trim() + "%";
+            params.add(term);
+            params.add(term);
+            params.add(term);
+            params.add(term);
+        }
+
+        if (categoryFilter != null && !categoryFilter.trim().isEmpty() && !"All Categories".equalsIgnoreCase(categoryFilter)) {
+            sql.append("AND LOWER(d.category) = LOWER(?) ");
+            params.add(categoryFilter.trim());
+        }
+
+        sql.append("ORDER BY d.device_id DESC");
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapResultSetToDevice(rs));
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Checks if any repair jobs are associated with this device.
+     */
+    public static boolean hasRepairHistory(int deviceId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM repair_jobs WHERE device_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, deviceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static Device mapResultSetToDevice(ResultSet rs) throws SQLException {
+        Device d = new Device(
+                rs.getInt("device_id"),
+                rs.getInt("customer_id"),
+                rs.getString("category"),
+                rs.getString("brand"),
+                rs.getString("model"),
+                rs.getString("serial_number"),
+                rs.getString("colour"),
+                rs.getString("accessories"),
+                rs.getInt("warranty_months"),
+                rs.getString("warranty_start_date"),
+                rs.getString("warranty_expiry_date"),
+                rs.getString("created_at")
+        );
+        d.setCustomerName(rs.getString("customer_name"));
+        d.setCustomerPhone(rs.getString("customer_phone"));
+        return d;
     }
 }
-

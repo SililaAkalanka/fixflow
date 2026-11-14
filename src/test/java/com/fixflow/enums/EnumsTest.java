@@ -8,32 +8,31 @@ import static org.junit.jupiter.api.Assertions.*;
 class EnumsTest {
 
     @Test
-    @DisplayName("Verify UserRole enum contains all five predefined roles")
+    @DisplayName("Verify UserRole enum contains two predefined roles")
     void testUserRoles() {
-        assertEquals(5, UserRole.values().length);
+        assertEquals(2, UserRole.values().length);
         assertNotNull(UserRole.valueOf("ADMINISTRATOR"));
-        assertNotNull(UserRole.valueOf("MANAGER"));
-        assertNotNull(UserRole.valueOf("RECEPTIONIST"));
         assertNotNull(UserRole.valueOf("TECHNICIAN"));
-        assertNotNull(UserRole.valueOf("INVENTORY_STAFF"));
     }
 
     @Test
-    @DisplayName("Verify RepairStatus enum contains all eight specification statuses")
+    @DisplayName("Verify RepairStatus enum contains all 6 simplified statuses")
     void testRepairStatuses() {
-        assertEquals(8, RepairStatus.values().length);
+        assertEquals(6, RepairStatus.values().length);
         assertTrue(RepairStatus.COLLECTED.isTerminal());
         assertTrue(RepairStatus.CANCELLED.isTerminal());
         assertFalse(RepairStatus.RECEIVED.isTerminal());
-        assertFalse(RepairStatus.REPAIRING.isTerminal());
+        assertFalse(RepairStatus.DIAGNOSING.isTerminal());
+        assertFalse(RepairStatus.IN_PROGRESS.isTerminal());
+        assertFalse(RepairStatus.COMPLETED.isTerminal());
     }
 
     @Test
-    @DisplayName("Verify PaymentStatus enum contains required statuses")
+    @DisplayName("Verify PaymentStatus enum contains 3 partial-payment statuses")
     void testPaymentStatuses() {
-        assertEquals(2, PaymentStatus.values().length);
-        assertNotNull(PaymentStatus.valueOf("PENDING"));
+        assertEquals(3, PaymentStatus.values().length);
+        assertNotNull(PaymentStatus.valueOf("UNPAID"));
+        assertNotNull(PaymentStatus.valueOf("PARTIALLY_PAID"));
         assertNotNull(PaymentStatus.valueOf("PAID"));
     }
 }
-

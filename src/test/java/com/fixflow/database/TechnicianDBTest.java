@@ -20,10 +20,10 @@ class TechnicianDBTest {
     @BeforeEach
     void setUp() throws SQLException {
         String testUrl = "jdbc:sqlite:file:techdb_test?mode=memory&cache=shared";
-        DatabaseManager.setCustomJdbcUrl(testUrl);
+        DatabaseConnection.setCustomJdbcUrl(testUrl);
 
-        sharedMemoryConnection = DatabaseManager.getConnection();
-        DatabaseManager.initializeDatabase();
+        sharedMemoryConnection = DatabaseConnection.getConnection();
+        DatabaseInitializer.initializeDatabase();
     }
 
     @AfterEach
@@ -31,7 +31,7 @@ class TechnicianDBTest {
         if (sharedMemoryConnection != null && !sharedMemoryConnection.isClosed()) {
             sharedMemoryConnection.close();
         }
-        DatabaseManager.setCustomJdbcUrl(null);
+        DatabaseConnection.setCustomJdbcUrl(null);
     }
 
     @Test
@@ -100,7 +100,7 @@ class TechnicianDBTest {
         // Insert prerequisite customer, device, and job assigned to this tech
         int custId;
         int devId;
-        try (Connection conn = DatabaseManager.getConnection()) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
             try (PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO customers (full_name, phone, created_at) VALUES ('Client A', '07111', datetime('now'))",
                     PreparedStatement.RETURN_GENERATED_KEYS)) {

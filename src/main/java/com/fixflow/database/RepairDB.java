@@ -1,9 +1,7 @@
 package com.fixflow.database;
 
 import com.fixflow.enums.RepairStatus;
-import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.RepairJob;
-import com.fixflow.model.StatusHistory;
 import com.fixflow.model.Technician;
 
 import java.sql.Connection;
@@ -19,148 +17,90 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Data access operations for repair jobs, technician assignments, status lifecycle, and audit history.
- * Implements Section 7.3, Section 8, and Section 11 of the FixFlow Project Specification.
+ * Data access operations for repair jobs, technician assignments, and status updates.
  */
 public class RepairDB {
 
     private static final Logger LOGGER = Logger.getLogger(RepairDB.class.getName());
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /**
-     * Creates a new repair job and records the initial intake status audit history.
-     * Enforces Section 7.3 business rules.
-     *
-     * @param job repair job model
-     * @param createdByRole role creating the job (Receptionist)
-     * @return generated job_id
-     * @throws SQLException if a database error occurs
-     */
-    public static int createRepairJob(RepairJob job, String createdByRole) throws SQLException {
-        String now = LocalDateTime.now().format(DATE_FORMATTER);
-        String sql = "INSERT INTO repair_jobs (customer_id, device_id, technician_id, date_received, initial_problem, " +
-                     "current_status, labour_charges, approval_status, original_job_id, created_at, updated_at) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                int jobId;
-                try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                    ps.setInt(1, job.getCustomerId());
-                    ps.setInt(2, job.getDeviceId());
-                    if (job.getTechnicianId() != null && job.getTechnicianId() > 0) {
-                        ps.setInt(3, job.getTechnicianId());
-                    } else {
-                        ps.setNull(3, java.sql.Types.INTEGER);
-                    }
-                    ps.setString(4, job.getDateReceived() != null ? job.getDateReceived() : now);
-                    ps.setString(5, job.getInitialProblem().trim());
-                    ps.setString(6, RepairStatus.RECEIVED.name());
-                    ps.setDouble(7, job.getLabourCharges());
-                    ps.setString(8, "PENDING");
-                    if (job.getOriginalJobId() != null && job.getOriginalJobId() > 0) {
-                        ps.setInt(9, job.getOriginalJobId());
-                    } else {
-                        ps.setNull(9, java.sql.Types.INTEGER);
-                    }
-                    ps.setString(10, now);
-                    ps.setString(11, now);
-
-                    ps.executeUpdate();
-                    try (ResultSet rs = ps.getGeneratedKeys()) {
-                        if (rs.next()) {
-                            jobId = rs.getInt(1);
-                            job.setJobId(jobId);
-                            job.setCurrentStatus(RepairStatus.RECEIVED);
-                            job.setDateReceived(now);
-                            job.setCreatedAt(now);
-                            job.setUpdatedAt(now);
-                        } else {
-                            throw new SQLException("Failed to retrieve generated job ID.");
-                        }
-                    }
-                }
-
-                // Record initial status history audit entry
-                String histSql = "INSERT INTO repair_status_history (job_id, from_status, to_status, changed_by_role, change_date, notes) " +
-                                 "VALUES (?, NULL, ?, ?, ?, ?)";
-                try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
-                    psHist.setInt(1, jobId);
-                    psHist.setString(2, RepairStatus.RECEIVED.name());
-                    psHist.setString(3, createdByRole != null ? createdByRole : "Receptionist");
-                    psHist.setString(4, now);
-                    psHist.setString(5, "Device received for repair intake.");
-                    psHist.executeUpdate();
-                }
-
-                conn.commit();
-                return jobId;
-            } catch (SQLException e) {
-                conn.rollback();
-                LOGGER.log(Level.SEVERE, "Failed to create repair job, rolled back.", e);
-                throw e;
-            } finally {
-                conn.setAutoCommit(true);
-            }
-        }
+    private RepairDB() {
+        // DAO utility
     }
 
     /**
-     * Manually assigns a technician to a repair job.
-     * Enforces Section 7.4 business rule: Inactive technicians cannot receive new assignments.
+     * Creates a new repair job with initial RECEIVED status.
+     *
+     * @param job repair job model
+     * @return generated job_id
+     * @throws SQLException if a database error occurs
+     */
+    public static int createRepairJob(RepairJob job) throws SQLException {
+        String now = LocalDateTime.now().format(DATE_FORMATTER);
+        String sql = "INSERT INTO repair_jobs (customer_id, device_id, technician_id, date_received, initial_problem, " +
+                     "current_status, labour_charges, notes, created_at, updated_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+
+            ps.setInt(1, job.getCustomerId());
+            ps.setInt(2, job.getDeviceId());
+            if (job.getTechnicianId() != null && job.getTechnicianId() > 0) {
+                ps.setInt(3, job.getTechnicianId());
+            } else {
+                ps.setNull(3, java.sql.Types.INTEGER);
+            }
+            ps.setString(4, job.getDateReceived() != null ? job.getDateReceived() : now);
+            ps.setString(5, job.getInitialProblem().trim());
+            ps.setString(6, RepairStatus.RECEIVED.name());
+            ps.setDouble(7, job.getLabourCharges());
+            ps.setString(8, job.getNotes());
+            ps.setString(9, now);
+            ps.setString(10, now);
+
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    int jobId = rs.getInt(1);
+                    job.setJobId(jobId);
+                    job.setCurrentStatus(RepairStatus.RECEIVED);
+                    job.setDateReceived(now);
+                    job.setCreatedAt(now);
+                    job.setUpdatedAt(now);
+                    return jobId;
+                }
+            }
+        }
+        throw new SQLException("Failed to retrieve generated job ID.");
+    }
+
+    /**
+     * Assigns a technician to a repair job.
      *
      * @param jobId repair job ID
      * @param technicianId technician ID
-     * @param assignedByRole role making the assignment (Receptionist or Manager)
-     * @return true if assigned
+     * @return true if updated
      * @throws SQLException if a database error occurs
      */
-    public static boolean assignTechnician(int jobId, int technicianId, String assignedByRole) throws SQLException {
+    public static boolean assignTechnician(int jobId, int technicianId) throws SQLException {
         Technician tech = TechnicianDB.getTechnicianById(technicianId);
         if (tech == null) {
             throw new IllegalArgumentException("Technician #" + technicianId + " not found.");
         }
         if (!tech.isActive()) {
-            throw new IllegalArgumentException("Cannot assign technician '" + tech.getName() + "': Technician is marked as Inactive. Inactive technicians cannot receive new assignments.");
+            throw new IllegalArgumentException("Cannot assign technician '" + tech.getName() + "': Technician is marked as Inactive.");
         }
 
-        RepairJob currentJob = getRepairJobById(jobId);
         String now = LocalDateTime.now().format(DATE_FORMATTER);
         String sql = "UPDATE repair_jobs SET technician_id = ?, updated_at = ? WHERE job_id = ?";
 
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                boolean updated;
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setInt(1, technicianId);
-                    ps.setString(2, now);
-                    ps.setInt(3, jobId);
-                    updated = ps.executeUpdate() > 0;
-                }
-
-                // Record assignment audit entry
-                String histSql = "INSERT INTO repair_status_history (job_id, from_status, to_status, changed_by_role, change_date, notes) " +
-                                 "VALUES (?, ?, ?, ?, ?, ?)";
-                try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
-                    psHist.setInt(1, jobId);
-                    psHist.setString(2, currentJob != null ? currentJob.getCurrentStatus().name() : null);
-                    psHist.setString(3, currentJob != null ? currentJob.getCurrentStatus().name() : null);
-                    psHist.setString(4, assignedByRole);
-                    psHist.setString(5, now);
-                    psHist.setString(6, "Assigned to technician: " + tech.getName() + " (" + tech.getSpecialization() + ")");
-                    psHist.executeUpdate();
-                }
-
-                conn.commit();
-                return updated;
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(true);
-            }
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, technicianId);
+            ps.setString(2, now);
+            ps.setInt(3, jobId);
+            return ps.executeUpdate() > 0;
         }
     }
 
@@ -169,23 +109,14 @@ public class RepairDB {
      *
      * @param jobId repair job ID
      * @param findings diagnosis notes
-     * @param estimatedCost estimated total repair cost
-     * @param labourCharges estimated labour charges
-     * @param estCompletionDate estimated completion date string
-     * @param advanceToWaitingApproval if true, automatically advances status from DIAGNOSING to WAITING_FOR_APPROVAL
-     * @param recordedByRole technician or manager role
+     * @param estimatedCost estimated cost
+     * @param labourCharges labour charges
+     * @param estCompletionDate estimated completion date
      * @throws SQLException if a database error occurs
      */
     public static void recordDiagnosis(int jobId, String findings, Double estimatedCost, double labourCharges,
-                                       String estCompletionDate, boolean advanceToWaitingApproval, String recordedByRole)
-            throws SQLException, InvalidStatusTransitionException {
-
+                                       String estCompletionDate) throws SQLException {
         String now = LocalDateTime.now().format(DATE_FORMATTER);
-        RepairJob job = getRepairJobById(jobId);
-        if (job == null) {
-            throw new SQLException("Repair Job #" + jobId + " not found.");
-        }
-
         String sql = "UPDATE repair_jobs SET diagnosis_findings = ?, estimated_cost = ?, labour_charges = ?, " +
                      "estimated_completion_date = ?, updated_at = ? WHERE job_id = ?";
 
@@ -203,167 +134,57 @@ public class RepairDB {
             ps.setInt(6, jobId);
             ps.executeUpdate();
         }
+    }
 
-        // If currently RECEIVED, move to DIAGNOSING
-        if (job.getCurrentStatus() == RepairStatus.RECEIVED) {
-            updateStatus(jobId, RepairStatus.DIAGNOSING, "Diagnosis initiated by technician.", recordedByRole);
+    /**
+     * Updates repair job status directly in the database.
+     *
+     * @param jobId repair job ID
+     * @param targetStatus target status
+     * @param notes optional notes or cancellation reason
+     * @throws SQLException if a database error occurs
+     */
+    public static void updateStatus(int jobId, RepairStatus targetStatus, String notes) throws SQLException {
+        String now = LocalDateTime.now().format(DATE_FORMATTER);
+        StringBuilder sql = new StringBuilder("UPDATE repair_jobs SET current_status = ?, updated_at = ? ");
+
+        if (targetStatus == RepairStatus.COMPLETED) {
+            sql.append(", actual_completion_date = ? ");
         }
+        if (notes != null && !notes.trim().isEmpty()) {
+            sql.append(", notes = ? ");
+        }
+        sql.append("WHERE job_id = ?");
 
-        // If requested to advance to WAITING_FOR_APPROVAL
-        if (advanceToWaitingApproval && job.getCurrentStatus() != RepairStatus.WAITING_FOR_APPROVAL) {
-            updateStatus(jobId, RepairStatus.WAITING_FOR_APPROVAL, "Diagnosis complete. Waiting for customer approval of estimate: LKR " + String.format("%.2f", estimatedCost != null ? estimatedCost : 0.0), recordedByRole);
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            ps.setString(1, targetStatus.name());
+            ps.setString(2, now);
+
+            int pIdx = 3;
+            if (targetStatus == RepairStatus.COMPLETED) {
+                ps.setString(pIdx++, now);
+            }
+            if (notes != null && !notes.trim().isEmpty()) {
+                ps.setString(pIdx++, notes.trim());
+            }
+            ps.setInt(pIdx, jobId);
+            ps.executeUpdate();
         }
     }
 
     /**
-     * Records the customer approval decision.
-     * Enforces Section 7.3:
-     * - If approved: advances to REPAIRING stage.
-     * - If rejected: advances to CANCELLED stage with retained cancellation reason.
-     *
-     * @param jobId repair job ID
-     * @param approved true if customer approved estimate, false if rejected
-     * @param cancellationReason reason if rejected (required if approved is false)
-     * @param recordedByRole role recording approval (Receptionist or Manager)
-     * @throws SQLException if a database error occurs
-     * @throws InvalidStatusTransitionException if transition is disallowed
+     * Updates notes for a repair job.
      */
-    public static void recordCustomerApproval(int jobId, boolean approved, String cancellationReason, String recordedByRole)
-            throws SQLException, InvalidStatusTransitionException {
-
-        RepairJob job = getRepairJobById(jobId);
-        if (job == null) {
-            throw new SQLException("Repair Job #" + jobId + " not found.");
-        }
-
+    public static void updateNotes(int jobId, String notes) throws SQLException {
         String now = LocalDateTime.now().format(DATE_FORMATTER);
-
-        if (approved) {
-            // Update approval status to APPROVED
-            String appSql = "UPDATE repair_jobs SET approval_status = 'APPROVED', approval_date = ?, updated_at = ? WHERE job_id = ?";
-            try (Connection conn = DatabaseConnection.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(appSql)) {
-                ps.setString(1, now);
-                ps.setString(2, now);
-                ps.setInt(3, jobId);
-                ps.executeUpdate();
-            }
-
-            // Advance status from WAITING_FOR_APPROVAL -> REPAIRING
-            updateStatus(jobId, RepairStatus.REPAIRING, "Customer approved estimate. Work authorized.", recordedByRole);
-        } else {
-            if (cancellationReason == null || cancellationReason.trim().isEmpty()) {
-                throw new IllegalArgumentException("A cancellation reason is required when a customer rejects an estimate.");
-            }
-
-            String appSql = "UPDATE repair_jobs SET approval_status = 'REJECTED', approval_date = ?, cancellation_reason = ?, updated_at = ? WHERE job_id = ?";
-            try (Connection conn = DatabaseConnection.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(appSql)) {
-                ps.setString(1, now);
-                ps.setString(2, cancellationReason.trim());
-                ps.setString(3, now);
-                ps.setInt(4, jobId);
-                ps.executeUpdate();
-            }
-
-            // Move status to CANCELLED with the exact cancellation reason
-            updateStatus(jobId, RepairStatus.CANCELLED, cancellationReason.trim(), recordedByRole);
-        }
-    }
-
-    /**
-     * Updates repair job status and records the transition in audit history within a transaction.
-     * Enforces the status transition matrix from Section 7.3 and Section 8.8.
-     *
-     * @param jobId repair job ID
-     * @param targetStatus proposed new status
-     * @param reasonOrNotes audit note or cancellation reason
-     * @param changedByRole role executing the transition
-     * @throws SQLException if a database error occurs
-     * @throws InvalidStatusTransitionException if transition is invalid
-     */
-    public static void updateStatus(int jobId, RepairStatus targetStatus, String reasonOrNotes, String changedByRole)
-            throws SQLException, InvalidStatusTransitionException {
-
-        RepairJob job = getRepairJobById(jobId);
-        if (job == null) {
-            throw new SQLException("Repair Job #" + jobId + " not found.");
-        }
-
-        // Validate lifecycle transition rules
-        job.validateTransition(targetStatus);
-
-        // Enforce Business Rule 13: A device cannot be collected until full payment is recorded
-        if (targetStatus == RepairStatus.COLLECTED) {
-            if (!PaymentDB.isJobFullyPaid(jobId)) {
-                throw new IllegalStateException("A device cannot be collected until full payment is recorded (Business Rule 13).");
-            }
-        }
-
-        if (targetStatus == RepairStatus.CANCELLED && (reasonOrNotes == null || reasonOrNotes.trim().isEmpty())) {
-            throw new IllegalArgumentException("A cancellation reason must be provided when cancelling a repair job.");
-        }
-
-        String now = LocalDateTime.now().format(DATE_FORMATTER);
-
-        StringBuilder updateSql = new StringBuilder("UPDATE repair_jobs SET current_status = ?, updated_at = ? ");
-        if (targetStatus == RepairStatus.READY_FOR_COLLECTION) {
-            updateSql.append(", actual_completion_date = ? ");
-        }
-        if (targetStatus == RepairStatus.CANCELLED) {
-            updateSql.append(", cancellation_reason = ? ");
-        }
-        updateSql.append("WHERE job_id = ?");
-
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                try (PreparedStatement ps = conn.prepareStatement(updateSql.toString())) {
-                    ps.setString(1, targetStatus.name());
-                    ps.setString(2, now);
-
-                    int pIdx = 3;
-                    if (targetStatus == RepairStatus.READY_FOR_COLLECTION) {
-                        ps.setString(pIdx++, now);
-                    }
-                    if (targetStatus == RepairStatus.CANCELLED) {
-                        ps.setString(pIdx++, reasonOrNotes != null ? reasonOrNotes.trim() : "Cancelled");
-                    }
-                    ps.setInt(pIdx, jobId);
-                    ps.executeUpdate();
-                }
-
-                // Insert into repair_status_history
-                String histSql = "INSERT INTO repair_status_history (job_id, from_status, to_status, changed_by_role, change_date, notes) " +
-                                 "VALUES (?, ?, ?, ?, ?, ?)";
-                try (PreparedStatement psHist = conn.prepareStatement(histSql)) {
-                    psHist.setInt(1, jobId);
-                    psHist.setString(2, job.getCurrentStatus().name());
-                    psHist.setString(3, targetStatus.name());
-                    psHist.setString(4, changedByRole != null ? changedByRole : "System");
-                    psHist.setString(5, now);
-                    psHist.setString(6, reasonOrNotes != null && !reasonOrNotes.trim().isEmpty() ? reasonOrNotes.trim() : null);
-                    psHist.executeUpdate();
-                }
-
-                conn.commit();
-                LOGGER.info("Job #" + jobId + " transitioned from " + job.getCurrentStatus() + " to " + targetStatus);
-
-                // Enforce Business Rule 14: Every completed repair receives a fixed 30-day warranty upon collection
-                if (targetStatus == RepairStatus.COLLECTED) {
-                    try {
-                        WarrantyDB.autoCreateWarrantyForJob(jobId);
-                    } catch (Exception ex) {
-                        LOGGER.log(Level.WARNING, "Auto-creation of 30-day warranty for Job #" + jobId + " failed", ex);
-                    }
-                }
-            } catch (SQLException e) {
-                conn.rollback();
-                LOGGER.log(Level.SEVERE, "Failed to update status for Job #" + jobId + ", rolled back.", e);
-                throw e;
-            } finally {
-                conn.setAutoCommit(true);
-            }
+        String sql = "UPDATE repair_jobs SET notes = ?, updated_at = ? WHERE job_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, notes);
+            ps.setString(2, now);
+            ps.setInt(3, jobId);
+            ps.executeUpdate();
         }
     }
 
@@ -371,14 +192,13 @@ public class RepairDB {
      * Retrieves a repair job by ID with joined customer, device, and technician details.
      *
      * @param jobId repair job ID
-     * @return {@link RepairJob} object, or null if not found
+     * @return RepairJob object, or null if not found
      * @throws SQLException if a database error occurs
      */
     public static RepairJob getRepairJobById(int jobId) throws SQLException {
         String sql = "SELECT j.job_id, j.customer_id, j.device_id, j.technician_id, j.date_received, j.initial_problem, " +
                      "j.current_status, j.diagnosis_findings, j.estimated_cost, j.labour_charges, j.estimated_completion_date, " +
-                     "j.actual_completion_date, j.approval_status, j.approval_date, j.cancellation_reason, j.original_job_id, " +
-                     "j.created_at, j.updated_at, " +
+                     "j.actual_completion_date, j.notes, j.created_at, j.updated_at, " +
                      "c.full_name AS customer_name, c.phone AS customer_phone, " +
                      "d.brand || ' ' || d.model || ' (' || d.category || ')' AS device_summary, " +
                      "t.name AS technician_name " +
@@ -410,8 +230,7 @@ public class RepairDB {
         List<RepairJob> list = new ArrayList<>();
         String sql = "SELECT j.job_id, j.customer_id, j.device_id, j.technician_id, j.date_received, j.initial_problem, " +
                      "j.current_status, j.diagnosis_findings, j.estimated_cost, j.labour_charges, j.estimated_completion_date, " +
-                     "j.actual_completion_date, j.approval_status, j.approval_date, j.cancellation_reason, j.original_job_id, " +
-                     "j.created_at, j.updated_at, " +
+                     "j.actual_completion_date, j.notes, j.created_at, j.updated_at, " +
                      "c.full_name AS customer_name, c.phone AS customer_phone, " +
                      "d.brand || ' ' || d.model || ' (' || d.category || ')' AS device_summary, " +
                      "t.name AS technician_name " +
@@ -433,7 +252,6 @@ public class RepairDB {
 
     /**
      * Retrieves repair jobs assigned to a specific technician.
-     * Implements Section 7.3: Technicians can view all repair jobs, but update only their assigned jobs.
      *
      * @param technicianId technician ID
      * @return list of repair jobs assigned to the technician
@@ -443,8 +261,7 @@ public class RepairDB {
         List<RepairJob> list = new ArrayList<>();
         String sql = "SELECT j.job_id, j.customer_id, j.device_id, j.technician_id, j.date_received, j.initial_problem, " +
                      "j.current_status, j.diagnosis_findings, j.estimated_cost, j.labour_charges, j.estimated_completion_date, " +
-                     "j.actual_completion_date, j.approval_status, j.approval_date, j.cancellation_reason, j.original_job_id, " +
-                     "j.created_at, j.updated_at, " +
+                     "j.actual_completion_date, j.notes, j.created_at, j.updated_at, " +
                      "c.full_name AS customer_name, c.phone AS customer_phone, " +
                      "d.brand || ' ' || d.model || ' (' || d.category || ')' AS device_summary, " +
                      "t.name AS technician_name " +
@@ -478,8 +295,7 @@ public class RepairDB {
         List<RepairJob> list = new ArrayList<>();
         String sql = "SELECT j.job_id, j.customer_id, j.device_id, j.technician_id, j.date_received, j.initial_problem, " +
                      "j.current_status, j.diagnosis_findings, j.estimated_cost, j.labour_charges, j.estimated_completion_date, " +
-                     "j.actual_completion_date, j.approval_status, j.approval_date, j.cancellation_reason, j.original_job_id, " +
-                     "j.created_at, j.updated_at, " +
+                     "j.actual_completion_date, j.notes, j.created_at, j.updated_at, " +
                      "c.full_name AS customer_name, c.phone AS customer_phone, " +
                      "d.brand || ' ' || d.model || ' (' || d.category || ')' AS device_summary, " +
                      "t.name AS technician_name " +
@@ -503,38 +319,6 @@ public class RepairDB {
     }
 
     /**
-     * Retrieves the audit history of status changes for a repair job.
-     *
-     * @param jobId repair job ID
-     * @return list of status history records ordered chronologically
-     * @throws SQLException if a database error occurs
-     */
-    public static List<StatusHistory> getStatusHistory(int jobId) throws SQLException {
-        List<StatusHistory> list = new ArrayList<>();
-        String sql = "SELECT history_id, job_id, from_status, to_status, changed_by_role, change_date, notes " +
-                     "FROM repair_status_history WHERE job_id = ? ORDER BY history_id ASC";
-
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, jobId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int hId = rs.getInt("history_id");
-                    String fromStr = rs.getString("from_status");
-                    String toStr = rs.getString("to_status");
-                    RepairStatus from = fromStr != null ? RepairStatus.valueOf(fromStr) : null;
-                    RepairStatus to = RepairStatus.valueOf(toStr);
-                    String role = rs.getString("changed_by_role");
-                    String date = rs.getString("change_date");
-                    String notes = rs.getString("notes");
-                    list.add(new StatusHistory(hId, jobId, from, to, role, date, notes));
-                }
-            }
-        }
-        return list;
-    }
-
-    /**
      * Searches and filters repair jobs by text query, status, and assigned technician.
      *
      * @param query search query
@@ -548,8 +332,7 @@ public class RepairDB {
         StringBuilder sql = new StringBuilder(
                 "SELECT j.job_id, j.customer_id, j.device_id, j.technician_id, j.date_received, j.initial_problem, " +
                 "j.current_status, j.diagnosis_findings, j.estimated_cost, j.labour_charges, j.estimated_completion_date, " +
-                "j.actual_completion_date, j.approval_status, j.approval_date, j.cancellation_reason, j.original_job_id, " +
-                "j.created_at, j.updated_at, " +
+                "j.actual_completion_date, j.notes, j.created_at, j.updated_at, " +
                 "c.full_name AS customer_name, c.phone AS customer_phone, " +
                 "d.brand || ' ' || d.model || ' (' || d.category || ')' AS device_summary, " +
                 "t.name AS technician_name " +
@@ -607,23 +390,29 @@ public class RepairDB {
     }
 
     /**
-     * Deletes a repair job. Blocked if payment or warranty records exist.
+     * Deletes a repair job. Blocked if payment records exist.
      *
      * @param jobId repair job ID
      * @return true if deleted
      * @throws SQLException if deletion is blocked
      */
     public static boolean deleteRepairJob(int jobId) throws SQLException {
-        // Enforce Section 7.10: Protect dependent financial records
         String checkPaymentSql = "SELECT COUNT(*) FROM payments WHERE job_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(checkPaymentSql)) {
             ps.setInt(1, jobId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next() && rs.getInt(1) > 0) {
-                    throw new SQLException("Cannot delete Repair Job #" + jobId + ": Financial payment records are associated with this job. Financial history must be preserved.");
+                    throw new SQLException("Cannot delete Repair Job #" + jobId + ": Payment records exist for this job.");
                 }
             }
+        }
+
+        // Also delete any part usage
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM repair_part_usage WHERE job_id = ?")) {
+            ps.setInt(1, jobId);
+            ps.executeUpdate();
         }
 
         String sql = "DELETE FROM repair_jobs WHERE job_id = ?";
@@ -654,12 +443,7 @@ public class RepairDB {
         job.setLabourCharges(rs.getDouble("labour_charges"));
         job.setEstimatedCompletionDate(rs.getString("estimated_completion_date"));
         job.setActualCompletionDate(rs.getString("actual_completion_date"));
-        job.setApprovalStatus(rs.getString("approval_status"));
-        job.setApprovalDate(rs.getString("approval_date"));
-        job.setCancellationReason(rs.getString("cancellation_reason"));
-
-        int origId = rs.getInt("original_job_id");
-        job.setOriginalJobId(rs.wasNull() ? null : origId);
+        job.setNotes(rs.getString("notes"));
 
         job.setCreatedAt(rs.getString("created_at"));
         job.setUpdatedAt(rs.getString("updated_at"));

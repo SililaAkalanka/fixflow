@@ -19,6 +19,7 @@ import java.util.logging.Logger;
 
 /**
  * Data access operations for user credentials and role-based authentication.
+ * Simplified for Administrator and Technician roles.
  */
 public class UserDB {
 
@@ -32,13 +33,13 @@ public class UserDB {
 
     /**
      * Checks whether first-launch setup is required.
-     * Setup is required if the users table does not contain credentials for all 5 shared roles.
+     * Setup is required if the users table does not contain credentials for Administrator and Technician.
      *
      * @return true if initial setup is needed, false if ready for normal login
      * @throws SQLException if a database access error occurs
      */
     public static boolean isSetupRequired() throws SQLException {
-        String sql = "SELECT COUNT(DISTINCT role) FROM users";
+        String sql = "SELECT COUNT(DISTINCT role) FROM users WHERE role IN ('ADMINISTRATOR', 'TECHNICIAN')";
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -82,7 +83,7 @@ public class UserDB {
     }
 
     /**
-     * Configures initial credentials for all five roles in a single database transaction.
+     * Configures initial credentials for Administrator and Technician in a single transaction.
      *
      * @param credentials map containing credentials for each role
      * @throws SQLException if any credential fails to save
@@ -115,11 +116,12 @@ public class UserDB {
                 }
                 ps.executeBatch();
                 conn.commit();
-                LOGGER.info("All 5 shared roles successfully configured.");
+                LOGGER.info("Configured credentials for Administrator and Technician.");
             } catch (Exception e) {
                 conn.rollback();
-                LOGGER.log(Level.SEVERE, "Failed to configure role credentials, rolled back.", e);
-                throw new SQLException("Failed to complete initial setup: " + e.getMessage(), e);
+                LOGGER.log(Level.SEVERE, "Failed to setup roles, rolled back.", e);
+                if (e instanceof SQLException) throw (SQLException) e;
+                throw new SQLException("Setup failed: " + e.getMessage(), e);
             } finally {
                 conn.setAutoCommit(true);
             }
@@ -127,68 +129,90 @@ public class UserDB {
     }
 
     /**
-     * Updates the password for a specific role. Accessible by Administrator.
+     * Updates the password for a specific user role.
      *
-     * @param role user role whose credentials will be updated
-     * @param newPlainPassword new plain-text password
-     * @return true if updated successfully, false otherwise
-     * @throws SQLException if a database access error occurs
-     */
-    public static boolean updatePassword(UserRole role, String newPlainPassword) throws SQLException {
-        return updateCredentials(role, null, newPlainPassword);
-    }
-
-    /**
-     * Updates credentials (username and/or password) for a specific role.
-     * Accessible by Administrator in System Settings (§7.10).
-     *
-     * @param role user role
-     * @param newUsername optional new username (if null or blank, retains current)
-     * @param newPlainPassword new plain-text password
+     * @param role target role
+     * @param newPlainPassword new plain text password
      * @return true if updated successfully
      * @throws SQLException if a database error occurs
      */
-    public static boolean updateCredentials(UserRole role, String newUsername, String newPlainPassword) throws SQLException {
-        if (newPlainPassword == null || newPlainPassword.trim().length() < 6) {
-            throw new IllegalArgumentException("Password must be at least 6 characters long.");
+    public static boolean updatePassword(UserRole role, String newPlainPassword) throws SQLException {
+        if (role == null || newPlainPassword == null || newPlainPassword.trim().length() < 6) {
+            throw new IllegalArgumentException("Password must be at least 6 characters.");
         }
 
-        String newHash = PasswordUtil.hashPassword(newPlainPassword);
+        String passwordHash = PasswordUtil.hashPassword(newPlainPassword.trim());
         String now = LocalDateTime.now().format(DATE_FORMATTER);
-
-        String sql;
-        if (newUsername != null && !newUsername.trim().isEmpty()) {
-            sql = "UPDATE users SET username = ?, password_hash = ?, updated_at = ? WHERE role = ?";
-        } else {
-            sql = "UPDATE users SET password_hash = ?, updated_at = ? WHERE role = ?";
-        }
+        String sql = "UPDATE users SET password_hash = ?, updated_at = ? WHERE role = ?";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            if (newUsername != null && !newUsername.trim().isEmpty()) {
-                ps.setString(1, newUsername.trim());
-                ps.setString(2, newHash);
-                ps.setString(3, now);
-                ps.setString(4, role.name());
-            } else {
-                ps.setString(1, newHash);
-                ps.setString(2, now);
-                ps.setString(3, role.name());
-            }
+            ps.setString(1, passwordHash);
+            ps.setString(2, now);
+            ps.setString(3, role.name());
             return ps.executeUpdate() > 0;
         }
     }
 
     /**
-     * Retrieves a user by their system role.
+     * Updates username and password for a specific user role.
      *
-     * @param role role to search for
+     * @param role target role
+     * @param newUsername new username
+     * @param newPlainPassword new plain password (optional, can be null or empty to keep current password)
+     * @return true if updated successfully
+     * @throws SQLException if database update fails
+     */
+    public static boolean updateCredentials(UserRole role, String newUsername, String newPlainPassword) throws SQLException {
+        if (role == null || newUsername == null || newUsername.trim().isEmpty()) {
+            throw new IllegalArgumentException("Role and username cannot be empty.");
+        }
+
+        String now = LocalDateTime.now().format(DATE_FORMATTER);
+
+        if (newPlainPassword != null && !newPlainPassword.trim().isEmpty()) {
+            if (newPlainPassword.trim().length() < 4) {
+                throw new IllegalArgumentException("Password must be at least 4 characters.");
+            }
+            String passwordHash = PasswordUtil.hashPassword(newPlainPassword.trim());
+            String sql = "UPDATE users SET username = ?, password_hash = ?, updated_at = ? WHERE role = ?";
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, newUsername.trim());
+                ps.setString(2, passwordHash);
+                ps.setString(3, now);
+                ps.setString(4, role.name());
+                return ps.executeUpdate() > 0;
+            }
+        } else {
+            String sql = "UPDATE users SET username = ?, updated_at = ? WHERE role = ?";
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, newUsername.trim());
+                ps.setString(2, now);
+                ps.setString(3, role.name());
+                return ps.executeUpdate() > 0;
+            }
+        }
+    }
+
+    /**
+     * Alias for updateCredentials.
+     */
+    public static boolean updateUserCredentials(UserRole role, String newUsername, String newPlainPassword) throws SQLException {
+        return updateCredentials(role, newUsername, newPlainPassword);
+    }
+
+    /**
+     * Retrieves user record by role.
+     *
+     * @param role user role
      * @return {@link User} object, or null if not found
-     * @throws SQLException if a database access error occurs
+     * @throws SQLException if a database error occurs
      */
     public static User getUserByRole(UserRole role) throws SQLException {
-        String sql = "SELECT user_id, role, username, password_hash, created_at, updated_at " +
-                     "FROM users WHERE role = ?";
+        if (role == null) return null;
+        String sql = "SELECT user_id, role, username, password_hash, created_at, updated_at FROM users WHERE role = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, role.name());
@@ -202,33 +226,41 @@ public class UserDB {
     }
 
     /**
-     * Retrieves all configured shared role user accounts.
+     * Retrieves all user accounts currently configured in the database.
      *
-     * @return list of all users
-     * @throws SQLException if a database access error occurs
+     * @return list of {@link User} records
+     * @throws SQLException if a database error occurs
      */
     public static List<User> getAllUsers() throws SQLException {
         List<User> list = new ArrayList<>();
-        String sql = "SELECT user_id, role, username, password_hash, created_at, updated_at FROM users ORDER BY user_id";
+        String sql = "SELECT user_id, role, username, password_hash, created_at, updated_at FROM users ORDER BY user_id ASC";
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                list.add(mapResultSetToUser(rs));
+                User u = mapResultSetToUser(rs);
+                if (u != null) {
+                    list.add(u);
+                }
             }
         }
         return list;
     }
 
     private static User mapResultSetToUser(ResultSet rs) throws SQLException {
-        int id = rs.getInt("user_id");
+        int userId = rs.getInt("user_id");
         String roleStr = rs.getString("role");
-        UserRole role = UserRole.valueOf(roleStr);
         String username = rs.getString("username");
         String passwordHash = rs.getString("password_hash");
         String createdAt = rs.getString("created_at");
         String updatedAt = rs.getString("updated_at");
-        return new User(id, role, username, passwordHash, createdAt, updatedAt);
+
+        try {
+            UserRole role = UserRole.valueOf(roleStr);
+            return new User(userId, role, username, passwordHash, createdAt, updatedAt);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning("Unknown role '" + roleStr + "' in users table, skipping.");
+            return null;
+        }
     }
 }
-

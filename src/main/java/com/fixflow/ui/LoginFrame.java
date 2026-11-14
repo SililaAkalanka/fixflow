@@ -96,7 +96,7 @@ public class LoginFrame extends JFrame {
         passwordField.addKeyListener(enterKeyListener);
 
         // Role guide hint
-        JLabel hintLabel = new JLabel("Supports shared login for all 5 roles");
+        JLabel hintLabel = new JLabel("Administrator and Technician login");
         hintLabel.setFont(new Font("Segoe UI", Font.ITALIC, 11));
         hintLabel.setForeground(Color.LIGHT_GRAY);
         hintLabel.setAlignmentX(Component.CENTER_ALIGNMENT);

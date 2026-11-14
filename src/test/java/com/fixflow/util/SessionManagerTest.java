@@ -51,13 +51,13 @@ class SessionManagerTest {
         assertEquals(UserRole.TECHNICIAN, SessionManager.getCurrentRole());
         assertFalse(SessionManager.isAdmin());
         assertTrue(SessionManager.hasRole(UserRole.TECHNICIAN));
-        assertFalse(SessionManager.hasRole(UserRole.MANAGER));
+        assertFalse(SessionManager.hasRole(UserRole.ADMINISTRATOR));
     }
 
     @Test
     @DisplayName("Verify logout clears session state")
     void testLogout() {
-        User user = new User(3, UserRole.MANAGER, "manager", "dummyHash", "2026-11-10 10:00:00", null);
+        User user = new User(3, UserRole.TECHNICIAN, "tech02", "dummyHash", "2026-11-10 10:00:00", null);
         SessionManager.login(user);
         assertTrue(SessionManager.isLoggedIn());
 

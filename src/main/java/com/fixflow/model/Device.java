@@ -1,10 +1,11 @@
 package com.fixflow.model;
 
+import java.time.LocalDate;
 import java.util.Objects;
 
 /**
  * Model representing an electronic device registered for repair.
- * Implements Section 7.2 of the FixFlow Project Specification.
+ * Includes basic device warranty information and validity checking.
  */
 public class Device {
 
@@ -16,6 +17,9 @@ public class Device {
     private String serialNumber;
     private String colour;
     private String accessories;
+    private Integer warrantyMonths = 0;
+    private String warrantyStartDate;
+    private String warrantyExpiryDate;
     private String createdAt;
 
     // Transient fields joined from customer table for display convenience
@@ -45,6 +49,39 @@ public class Device {
         this.colour = colour;
         this.accessories = accessories;
         this.createdAt = createdAt;
+    }
+
+    public Device(int deviceId, int customerId, String category, String brand, String model, String serialNumber,
+                  String colour, String accessories, Integer warrantyMonths, String warrantyStartDate,
+                  String warrantyExpiryDate, String createdAt) {
+        this.deviceId = deviceId;
+        this.customerId = customerId;
+        this.category = category;
+        this.brand = brand;
+        this.model = model;
+        this.serialNumber = serialNumber;
+        this.colour = colour;
+        this.accessories = accessories;
+        this.warrantyMonths = warrantyMonths;
+        this.warrantyStartDate = warrantyStartDate;
+        this.warrantyExpiryDate = warrantyExpiryDate;
+        this.createdAt = createdAt;
+    }
+
+    /**
+     * Checks whether the device is currently under active warranty.
+     *
+     * @return true if currently under warranty, false otherwise
+     */
+    public boolean isUnderWarranty() {
+        if (warrantyExpiryDate == null || warrantyExpiryDate.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            return LocalDate.now().compareTo(LocalDate.parse(warrantyExpiryDate.trim())) <= 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public int getDeviceId() {
@@ -111,6 +148,30 @@ public class Device {
         this.accessories = accessories;
     }
 
+    public Integer getWarrantyMonths() {
+        return warrantyMonths;
+    }
+
+    public void setWarrantyMonths(Integer warrantyMonths) {
+        this.warrantyMonths = warrantyMonths;
+    }
+
+    public String getWarrantyStartDate() {
+        return warrantyStartDate;
+    }
+
+    public void setWarrantyStartDate(String warrantyStartDate) {
+        this.warrantyStartDate = warrantyStartDate;
+    }
+
+    public String getWarrantyExpiryDate() {
+        return warrantyExpiryDate;
+    }
+
+    public void setWarrantyExpiryDate(String warrantyExpiryDate) {
+        this.warrantyExpiryDate = warrantyExpiryDate;
+    }
+
     public String getCreatedAt() {
         return createdAt;
     }
@@ -150,7 +211,6 @@ public class Device {
 
     @Override
     public String toString() {
-        return brand + " " + model + " [" + category + "] (ID: #" + deviceId + ")";
+        return brand + " " + model + (serialNumber != null ? " (SN: " + serialNumber + ")" : "");
     }
 }
-

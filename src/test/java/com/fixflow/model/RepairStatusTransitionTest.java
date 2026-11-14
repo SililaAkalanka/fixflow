@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RepairStatusTransitionTest {
 
     @Test
-    @DisplayName("Verify valid transitions from RECEIVED")
+    @DisplayName("Verify valid transitions from RECEIVED: DIAGNOSING and CANCELLED")
     void testTransitionsFromReceived() {
         RepairJob job = new RepairJob(1, 1, "Screen cracked");
         assertEquals(RepairStatus.RECEIVED, job.getCurrentStatus());
@@ -24,41 +24,45 @@ class RepairStatusTransitionTest {
 
         assertTrue(job.canTransitionTo(RepairStatus.DIAGNOSING));
         assertTrue(job.canTransitionTo(RepairStatus.CANCELLED));
+        assertFalse(job.canTransitionTo(RepairStatus.IN_PROGRESS));
+        assertFalse(job.canTransitionTo(RepairStatus.COMPLETED));
         assertFalse(job.canTransitionTo(RepairStatus.COLLECTED));
-        assertFalse(job.canTransitionTo(RepairStatus.REPAIRING));
     }
 
     @Test
-    @DisplayName("Verify approval is required to transition from WAITING_FOR_APPROVAL to REPAIRING")
-    void testApprovalRequirementForRepairing() {
+    @DisplayName("Verify valid transitions from DIAGNOSING: IN_PROGRESS and CANCELLED")
+    void testTransitionsFromDiagnosing() {
         RepairJob job = new RepairJob(1, 1, "Water damage");
-        job.setCurrentStatus(RepairStatus.WAITING_FOR_APPROVAL);
-        job.setApprovalStatus("PENDING");
+        job.setCurrentStatus(RepairStatus.DIAGNOSING);
 
-        // Without approval, transition to REPAIRING must fail
-        InvalidStatusTransitionException ex = assertThrows(
-                InvalidStatusTransitionException.class,
-                () -> job.validateTransition(RepairStatus.REPAIRING)
-        );
-        assertTrue(ex.getMessage().contains("without recorded customer approval"));
-
-        // With approval, transition must succeed
-        job.setApprovalStatus("APPROVED");
-        assertDoesNotThrow(() -> job.validateTransition(RepairStatus.REPAIRING));
+        assertTrue(job.canTransitionTo(RepairStatus.IN_PROGRESS));
+        assertTrue(job.canTransitionTo(RepairStatus.CANCELLED));
+        assertFalse(job.canTransitionTo(RepairStatus.COMPLETED));
+        assertFalse(job.canTransitionTo(RepairStatus.COLLECTED));
+        assertFalse(job.canTransitionTo(RepairStatus.RECEIVED));
     }
 
     @Test
-    @DisplayName("Verify waiting for parts loop: REPAIRING -> WAITING_FOR_PARTS -> REPAIRING")
-    void testWaitingForPartsLoop() {
+    @DisplayName("Verify valid transitions from IN_PROGRESS: COMPLETED and CANCELLED")
+    void testTransitionsFromInProgress() {
         RepairJob job = new RepairJob(1, 1, "Bad logic board");
-        job.setCurrentStatus(RepairStatus.REPAIRING);
+        job.setCurrentStatus(RepairStatus.IN_PROGRESS);
 
-        assertTrue(job.canTransitionTo(RepairStatus.WAITING_FOR_PARTS));
-        assertDoesNotThrow(() -> job.validateTransition(RepairStatus.WAITING_FOR_PARTS));
+        assertTrue(job.canTransitionTo(RepairStatus.COMPLETED));
+        assertTrue(job.canTransitionTo(RepairStatus.CANCELLED));
+        assertFalse(job.canTransitionTo(RepairStatus.COLLECTED));
+        assertFalse(job.canTransitionTo(RepairStatus.DIAGNOSING));
+    }
 
-        job.setCurrentStatus(RepairStatus.WAITING_FOR_PARTS);
-        assertTrue(job.canTransitionTo(RepairStatus.REPAIRING));
-        assertDoesNotThrow(() -> job.validateTransition(RepairStatus.REPAIRING));
+    @Test
+    @DisplayName("Verify valid transitions from COMPLETED: COLLECTED and CANCELLED")
+    void testTransitionsFromCompleted() {
+        RepairJob job = new RepairJob(1, 1, "Fixed phone");
+        job.setCurrentStatus(RepairStatus.COMPLETED);
+
+        assertTrue(job.canTransitionTo(RepairStatus.COLLECTED));
+        assertTrue(job.canTransitionTo(RepairStatus.CANCELLED));
+        assertFalse(job.canTransitionTo(RepairStatus.IN_PROGRESS));
     }
 
     @Test
@@ -74,7 +78,7 @@ class RepairStatusTransitionTest {
             assertThrows(InvalidStatusTransitionException.class, () -> collectedJob.validateTransition(status));
         }
 
-        RepairJob cancelledJob = new RepairJob(1, 1, "Declined quote");
+        RepairJob cancelledJob = new RepairJob(1, 1, "Declined repair");
         cancelledJob.setCurrentStatus(RepairStatus.CANCELLED);
         assertTrue(cancelledJob.getCurrentStatus().isTerminal());
         assertTrue(cancelledJob.getValidNextStatuses().isEmpty());
@@ -86,14 +90,13 @@ class RepairStatusTransitionTest {
     }
 
     @Test
-    @DisplayName("Verify invalid direct jump (e.g. RECEIVED to COLLECTED) throws exception")
+    @DisplayName("Verify invalid direct jumps throw exception")
     void testInvalidDirectJumps() {
         RepairJob job = new RepairJob(1, 1, "Broken speaker");
         job.setCurrentStatus(RepairStatus.RECEIVED);
 
         assertThrows(InvalidStatusTransitionException.class, () -> job.validateTransition(RepairStatus.COLLECTED));
-        assertThrows(InvalidStatusTransitionException.class, () -> job.validateTransition(RepairStatus.READY_FOR_COLLECTION));
-        assertThrows(InvalidStatusTransitionException.class, () -> job.validateTransition(RepairStatus.WAITING_FOR_PARTS));
+        assertThrows(InvalidStatusTransitionException.class, () -> job.validateTransition(RepairStatus.COMPLETED));
+        assertThrows(InvalidStatusTransitionException.class, () -> job.validateTransition(RepairStatus.IN_PROGRESS));
     }
 }
-

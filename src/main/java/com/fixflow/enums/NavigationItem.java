@@ -4,38 +4,35 @@ import java.util.Set;
 
 /**
  * Navigation items representing primary application screens with associated RBAC permissions.
- * Implements Section 6 and Section 10.5 of the FixFlow Project Specification.
+ * Simplified for Administrator and Technician roles.
  */
 public enum NavigationItem {
 
     DASHBOARD("Dashboard", "System overview and key operational metrics",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST, UserRole.TECHNICIAN, UserRole.INVENTORY_STAFF)),
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
     CUSTOMERS("Customers", "Customer directory, contact details, and history",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST, UserRole.TECHNICIAN)),
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
     DEVICES("Devices", "Electronic device registry and category tracking",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST, UserRole.TECHNICIAN)),
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
     REPAIRS("Repair Jobs", "End-to-end repair tracking and status lifecycle",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST, UserRole.TECHNICIAN)),
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
     TECHNICIANS("Technicians", "Staff management, assignments, and active status",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST)),
+            Set.of(UserRole.ADMINISTRATOR)),
 
     INVENTORY("Inventory", "Spare parts, stock tracking, and reorder levels",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.INVENTORY_STAFF, UserRole.MANAGER, UserRole.TECHNICIAN)),
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
-    PAYMENTS("Payments & Invoices", "Cash payment recording and PDF invoice generation",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST)),
-
-    WARRANTIES("Warranties", "30-day warranty tracking and claim processing",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER, UserRole.RECEPTIONIST)),
+    PAYMENTS("Payments & Invoices", "Cash payment recording and receipts",
+            Set.of(UserRole.ADMINISTRATOR, UserRole.TECHNICIAN)),
 
     REPORTS("Reports", "Operational summaries, revenue, and inventory analysis",
-            Set.of(UserRole.ADMINISTRATOR, UserRole.MANAGER)),
+            Set.of(UserRole.ADMINISTRATOR)),
 
-    SETTINGS("Settings", "Shared role credentials and backup management",
+    SETTINGS("Settings", "Role credentials and system settings",
             Set.of(UserRole.ADMINISTRATOR));
 
     private final String displayName;
@@ -76,8 +73,6 @@ public enum NavigationItem {
         if (role == null) return true;
         return switch (this) {
             case CUSTOMERS, DEVICES -> role == UserRole.TECHNICIAN;
-            case TECHNICIANS -> role == UserRole.RECEPTIONIST;
-            case INVENTORY -> role == UserRole.MANAGER || role == UserRole.TECHNICIAN;
             default -> false;
         };
     }
@@ -87,4 +82,3 @@ public enum NavigationItem {
         return displayName;
     }
 }
-

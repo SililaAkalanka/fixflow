@@ -182,7 +182,6 @@ public class MainFrame extends JFrame {
             case TECHNICIANS -> new TechnicianPanel();
             case INVENTORY -> new InventoryPanel();
             case PAYMENTS -> new PaymentPanel();
-            case WARRANTIES -> new WarrantyPanel();
             case REPORTS -> new ReportsPanel();
             case SETTINGS -> new SettingsPanel();
         };

@@ -26,13 +26,13 @@ public class InventoryDBTest {
     @BeforeEach
     void setUp() throws Exception {
         tempDbFile = File.createTempFile("fixflow_inv_test_", ".db");
-        DatabaseManager.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
-        DatabaseManager.initializeDatabase();
+        DatabaseConnection.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
+        DatabaseInitializer.initializeDatabase();
     }
 
     @AfterEach
     void tearDown() {
-        DatabaseManager.setCustomJdbcUrl(null);
+        DatabaseConnection.setCustomJdbcUrl(null);
         if (tempDbFile != null && tempDbFile.exists()) {
             tempDbFile.delete();
         }
@@ -44,7 +44,7 @@ public class InventoryDBTest {
         Device d = new Device(custId, "Laptop", "Dell", "XPS 15", "SN123456", "Silver", "Charger");
         int devId = DeviceDB.createDevice(d);
         RepairJob job = new RepairJob(custId, devId, "Screen flickering");
-        return RepairDB.createRepairJob(job, "Technician");
+        return RepairDB.createRepairJob(job);
     }
 
     @Test

@@ -14,20 +14,20 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Electronic device registry panel.
- * Implements Section 7.2 of the FixFlow Project Specification.
+ * Electronic device registry panel with embedded warranty tracking.
  */
 public class DevicePanel extends BasePanel {
 
     private static final Logger LOGGER = Logger.getLogger(DevicePanel.class.getName());
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"ID", "Customer", "Customer Phone", "Category", "Brand", "Model", "Serial / IMEI", "Colour", "Accessories"}, 0
+            new Object[]{"ID", "Customer", "Phone", "Category", "Brand", "Model", "Serial / IMEI", "Warranty (Months)", "Warranty Expiry", "Warranty Status"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -44,10 +44,9 @@ public class DevicePanel extends BasePanel {
 
     private JButton registerBtn;
     private JButton editBtn;
-    private JButton deleteBtn;
 
     public DevicePanel() {
-        super("Device Registry", "Track electronic devices, serial numbers, categories, and customer associations");
+        super("Device Registry", "Track electronic devices, serial numbers, categories, customer associations, and warranty coverage");
         initUI();
     }
 
@@ -100,15 +99,10 @@ public class DevicePanel extends BasePanel {
         JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         bottomBar.setBorder(new EmptyBorder(5, 0, 0, 0));
 
-        editBtn = new JButton("Edit Device");
+        editBtn = new JButton("Edit Device Details / Warranty");
         editBtn.addActionListener(e -> handleEditDevice());
 
-        deleteBtn = new JButton("Delete Record");
-        deleteBtn.setForeground(new Color(200, 30, 30));
-        deleteBtn.addActionListener(e -> handleDeleteDevice());
-
         bottomBar.add(editBtn);
-        bottomBar.add(deleteBtn);
 
         contentArea.add(topBar, BorderLayout.NORTH);
         contentArea.add(scrollPane, BorderLayout.CENTER);
@@ -124,11 +118,9 @@ public class DevicePanel extends BasePanel {
     private void applyRolePermissions() {
         UserRole role = SessionManager.getCurrentRole();
         boolean readOnly = NavigationItem.DEVICES.isReadOnly(role);
-        boolean isAdmin = SessionManager.isAdmin();
 
         registerBtn.setVisible(!readOnly);
         editBtn.setVisible(!readOnly);
-        deleteBtn.setVisible(isAdmin); // Specification §7.10: Only administrators can delete records
 
         accessBadge.setText(readOnly ? "Mode: View Only" : "Mode: Full Access");
         accessBadge.setForeground(readOnly ? new Color(180, 100, 0) : new Color(16, 124, 65));
@@ -139,6 +131,7 @@ public class DevicePanel extends BasePanel {
         try {
             List<Device> list = DeviceDB.getAllDevices();
             for (Device d : list) {
+                String warrantyStatus = d.isUnderWarranty() ? "VALID (Under Warranty)" : "EXPIRED / NONE";
                 tableModel.addRow(new Object[]{
                         d.getDeviceId(),
                         d.getCustomerName() != null ? d.getCustomerName() : ("Cust #" + d.getCustomerId()),
@@ -147,8 +140,9 @@ public class DevicePanel extends BasePanel {
                         d.getBrand(),
                         d.getModel(),
                         d.getSerialNumber() != null ? d.getSerialNumber() : "–",
-                        d.getColour() != null ? d.getColour() : "–",
-                        d.getAccessories() != null ? d.getAccessories() : "None"
+                        d.getWarrantyMonths() > 0 ? d.getWarrantyMonths() + " mo" : "None",
+                        d.getWarrantyExpiryDate() != null ? d.getWarrantyExpiryDate() : "–",
+                        warrantyStatus
                 });
             }
         } catch (SQLException e) {
@@ -164,6 +158,7 @@ public class DevicePanel extends BasePanel {
         try {
             List<Device> list = DeviceDB.searchDevices(query, category);
             for (Device d : list) {
+                String warrantyStatus = d.isUnderWarranty() ? "VALID (Under Warranty)" : "EXPIRED / NONE";
                 tableModel.addRow(new Object[]{
                         d.getDeviceId(),
                         d.getCustomerName() != null ? d.getCustomerName() : ("Cust #" + d.getCustomerId()),
@@ -172,8 +167,9 @@ public class DevicePanel extends BasePanel {
                         d.getBrand(),
                         d.getModel(),
                         d.getSerialNumber() != null ? d.getSerialNumber() : "–",
-                        d.getColour() != null ? d.getColour() : "–",
-                        d.getAccessories() != null ? d.getAccessories() : "None"
+                        d.getWarrantyMonths() > 0 ? d.getWarrantyMonths() + " mo" : "None",
+                        d.getWarrantyExpiryDate() != null ? d.getWarrantyExpiryDate() : "–",
+                        warrantyStatus
                 });
             }
         } catch (SQLException e) {
@@ -206,37 +202,10 @@ public class DevicePanel extends BasePanel {
         }
     }
 
-    private void handleDeleteDevice() {
-        Integer deviceId = getSelectedDeviceId();
-        if (deviceId == null) return;
-
-        int confirm = JOptionPane.showConfirmDialog(
-                this,
-                "Are you sure you want to delete Device #" + deviceId + "?\n" +
-                "Note: Deletion will be rejected if associated repair records exist.",
-                "Confirm Deletion",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE
-        );
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            try {
-                boolean deleted = DeviceDB.deleteDevice(deviceId);
-                if (deleted) {
-                    JOptionPane.showMessageDialog(this, "Device #" + deviceId + " successfully deleted.", "Record Deleted", JOptionPane.INFORMATION_MESSAGE);
-                    loadDevices();
-                }
-            } catch (SQLException e) {
-                LOGGER.log(Level.WARNING, "Device deletion blocked", e);
-                JOptionPane.showMessageDialog(this, e.getMessage(), "Deletion Prohibited", JOptionPane.ERROR_MESSAGE);
-            }
-        }
-    }
-
     private void openDeviceDialog(Device deviceToEdit) {
         boolean isEdit = deviceToEdit != null;
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), isEdit ? "Edit Device" : "Register Device", true);
-        dialog.setSize(480, 460);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), isEdit ? "Edit Device & Warranty" : "Register Device", true);
+        dialog.setSize(520, 520);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = new JPanel(new BorderLayout(0, 15));
@@ -265,6 +234,13 @@ public class DevicePanel extends BasePanel {
         JTextField colourField = new JTextField(isEdit && deviceToEdit.getColour() != null ? deviceToEdit.getColour() : "");
         JTextField accessoriesField = new JTextField(isEdit && deviceToEdit.getAccessories() != null ? deviceToEdit.getAccessories() : "");
 
+        JSpinner warrantyMonthsSpinner = new JSpinner(new SpinnerNumberModel(
+                isEdit ? deviceToEdit.getWarrantyMonths() : 0, 0, 120, 1
+        ));
+        JTextField warrantyStartDateField = new JTextField(
+                isEdit && deviceToEdit.getWarrantyStartDate() != null ? deviceToEdit.getWarrantyStartDate() : LocalDate.now().toString()
+        );
+
         if (!isEdit) {
             form.add(new JLabel("Associated Customer:*"));
             form.add(customerSelector);
@@ -282,6 +258,10 @@ public class DevicePanel extends BasePanel {
         form.add(colourField);
         form.add(new JLabel("Accessories Received:"));
         form.add(accessoriesField);
+        form.add(new JLabel("Warranty Period (Months):"));
+        form.add(warrantyMonthsSpinner);
+        form.add(new JLabel("Warranty Start Date (YYYY-MM-DD):"));
+        form.add(warrantyStartDateField);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         JButton cancelBtn = new JButton("Cancel");
@@ -308,6 +288,22 @@ public class DevicePanel extends BasePanel {
                 return;
             }
 
+            int wMonths = (Integer) warrantyMonthsSpinner.getValue();
+            String wStart = warrantyStartDateField.getText().trim();
+            String wExpiry = null;
+            if (wMonths > 0) {
+                try {
+                    LocalDate startDate = LocalDate.parse(wStart);
+                    wExpiry = startDate.plusMonths(wMonths).toString();
+                } catch (Exception ex) {
+                    wStart = LocalDate.now().toString();
+                    wExpiry = LocalDate.now().plusMonths(wMonths).toString();
+                }
+            } else {
+                wStart = null;
+                wExpiry = null;
+            }
+
             try {
                 if (isEdit) {
                     deviceToEdit.setCategory((String) categoryField.getSelectedItem());
@@ -316,8 +312,12 @@ public class DevicePanel extends BasePanel {
                     deviceToEdit.setSerialNumber(serialField.getText().trim());
                     deviceToEdit.setColour(colourField.getText().trim());
                     deviceToEdit.setAccessories(accessoriesField.getText().trim());
+                    deviceToEdit.setWarrantyMonths(wMonths);
+                    deviceToEdit.setWarrantyStartDate(wStart);
+                    deviceToEdit.setWarrantyExpiryDate(wExpiry);
+
                     DeviceDB.updateDevice(deviceToEdit);
-                    JOptionPane.showMessageDialog(dialog, "Device updated successfully.", "Saved", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(dialog, "Device and warranty updated successfully.", "Saved", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     CustomerItem selectedCustomer = (CustomerItem) customerSelector.getSelectedItem();
                     Device newDevice = new Device(
@@ -329,6 +329,10 @@ public class DevicePanel extends BasePanel {
                             colourField.getText().trim(),
                             accessoriesField.getText().trim()
                     );
+                    newDevice.setWarrantyMonths(wMonths);
+                    newDevice.setWarrantyStartDate(wStart);
+                    newDevice.setWarrantyExpiryDate(wExpiry);
+
                     int deviceId = DeviceDB.createDevice(newDevice);
                     JOptionPane.showMessageDialog(dialog, "Device registered successfully (ID: #" + deviceId + ").", "Registration Complete", JOptionPane.INFORMATION_MESSAGE);
                 }

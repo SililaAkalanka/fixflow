@@ -1,6 +1,6 @@
 package com.fixflow;
 
-import com.fixflow.database.DatabaseManager;
+import com.fixflow.database.DatabaseInitializer;
 import com.fixflow.database.UserDB;
 import com.fixflow.ui.LoginFrame;
 import com.fixflow.ui.SetupFrame;
@@ -24,7 +24,7 @@ public class Main {
 
         // Initialize SQLite local database and create schema
         try {
-            DatabaseManager.initializeDatabase();
+            DatabaseInitializer.initializeDatabase();
         } catch (SQLException e) {
             LOGGER.log(Level.SEVERE, "Failed to initialize SQLite database.", e);
             JOptionPane.showMessageDialog(

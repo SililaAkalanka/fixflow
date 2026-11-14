@@ -9,8 +9,10 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Model representing a repair job and its complete lifecycle.
- * Implements Section 7.3, Section 8, and Section 12 (OOP Encapsulation & Business Rules).
+ * Model representing a repair job and its lifecycle.
+ * Simplified repair lifecycle:
+ * RECEIVED -> DIAGNOSING -> IN_PROGRESS -> COMPLETED -> COLLECTED
+ *                                       \-> CANCELLED
  */
 public class RepairJob {
 
@@ -20,16 +22,13 @@ public class RepairJob {
     private Integer technicianId;
     private String dateReceived;
     private String initialProblem;
-    private RepairStatus currentStatus;
+    private RepairStatus currentStatus = RepairStatus.RECEIVED;
     private String diagnosisFindings;
     private Double estimatedCost;
-    private double labourCharges;
+    private double labourCharges = 0.0;
     private String estimatedCompletionDate;
     private String actualCompletionDate;
-    private String approvalStatus; // "PENDING", "APPROVED", "REJECTED"
-    private String approvalDate;
-    private String cancellationReason;
-    private Integer originalJobId; // For warranty claims
+    private String notes;
     private String createdAt;
     private String updatedAt;
 
@@ -41,8 +40,6 @@ public class RepairJob {
 
     public RepairJob() {
         this.currentStatus = RepairStatus.RECEIVED;
-        this.approvalStatus = "PENDING";
-        this.labourCharges = 0.0;
     }
 
     public RepairJob(int customerId, int deviceId, String initialProblem) {
@@ -50,15 +47,12 @@ public class RepairJob {
         this.deviceId = deviceId;
         this.initialProblem = initialProblem;
         this.currentStatus = RepairStatus.RECEIVED;
-        this.approvalStatus = "PENDING";
-        this.labourCharges = 0.0;
     }
 
     /**
      * Determines all valid next statuses from the current status.
-     * Enforces the status transition matrix from Section 7.3 and Section 8.8.
      *
-     * @return set of valid destination {@link RepairStatus}es
+     * @return set of valid destination statuses
      */
     public Set<RepairStatus> getValidNextStatuses() {
         if (currentStatus == null || currentStatus.isTerminal()) {
@@ -67,11 +61,9 @@ public class RepairJob {
 
         return switch (currentStatus) {
             case RECEIVED -> EnumSet.of(RepairStatus.DIAGNOSING, RepairStatus.CANCELLED);
-            case DIAGNOSING -> EnumSet.of(RepairStatus.WAITING_FOR_APPROVAL, RepairStatus.CANCELLED);
-            case WAITING_FOR_APPROVAL -> EnumSet.of(RepairStatus.REPAIRING, RepairStatus.CANCELLED);
-            case REPAIRING -> EnumSet.of(RepairStatus.WAITING_FOR_PARTS, RepairStatus.READY_FOR_COLLECTION, RepairStatus.CANCELLED);
-            case WAITING_FOR_PARTS -> EnumSet.of(RepairStatus.REPAIRING, RepairStatus.CANCELLED);
-            case READY_FOR_COLLECTION -> EnumSet.of(RepairStatus.COLLECTED, RepairStatus.CANCELLED);
+            case DIAGNOSING -> EnumSet.of(RepairStatus.IN_PROGRESS, RepairStatus.CANCELLED);
+            case IN_PROGRESS -> EnumSet.of(RepairStatus.COMPLETED, RepairStatus.CANCELLED);
+            case COMPLETED -> EnumSet.of(RepairStatus.COLLECTED, RepairStatus.CANCELLED);
             case COLLECTED, CANCELLED -> Collections.emptySet();
         };
     }
@@ -80,7 +72,7 @@ public class RepairJob {
      * Checks if a transition from current status to target status is valid.
      *
      * @param targetStatus proposed new status
-     * @return true if valid according to business rules, false otherwise
+     * @return true if valid, false otherwise
      */
     public boolean canTransitionTo(RepairStatus targetStatus) {
         if (targetStatus == null) return false;
@@ -88,10 +80,10 @@ public class RepairJob {
     }
 
     /**
-     * Validates that the transition to targetStatus satisfies all business rules.
+     * Validates that the transition to targetStatus satisfies lifecycle rules.
      *
      * @param targetStatus proposed new status
-     * @throws InvalidStatusTransitionException if transition violates lifecycle or business rules
+     * @throws InvalidStatusTransitionException if transition is invalid
      */
     public void validateTransition(RepairStatus targetStatus) throws InvalidStatusTransitionException {
         if (targetStatus == null) {
@@ -100,24 +92,14 @@ public class RepairJob {
 
         if (currentStatus != null && currentStatus.isTerminal()) {
             throw new InvalidStatusTransitionException(currentStatus, targetStatus,
-                    "Terminal state '" + currentStatus.getDisplayName() + "' cannot transition to any other status.");
+                    "Terminal state '" + currentStatus.getDisplayName() + "' cannot transition further.");
         }
 
         if (!canTransitionTo(targetStatus)) {
             throw new InvalidStatusTransitionException(currentStatus, targetStatus,
-                    "Transition not permitted by lifecycle rules. Permitted next statuses: " + getValidNextStatuses());
-        }
-
-        // Business Rule §7.3 & §8.6: Customer approval is required before repair work begins
-        if (targetStatus == RepairStatus.REPAIRING && currentStatus == RepairStatus.WAITING_FOR_APPROVAL) {
-            if (!"APPROVED".equalsIgnoreCase(approvalStatus)) {
-                throw new InvalidStatusTransitionException(currentStatus, targetStatus,
-                        "A repair job cannot enter the REPAIRING stage without recorded customer approval.");
-            }
+                    "Transition not permitted. Permitted next statuses: " + getValidNextStatuses());
         }
     }
-
-    // Getters and Setters
 
     public int getJobId() {
         return jobId;
@@ -215,36 +197,12 @@ public class RepairJob {
         this.actualCompletionDate = actualCompletionDate;
     }
 
-    public String getApprovalStatus() {
-        return approvalStatus;
+    public String getNotes() {
+        return notes;
     }
 
-    public void setApprovalStatus(String approvalStatus) {
-        this.approvalStatus = approvalStatus;
-    }
-
-    public String getApprovalDate() {
-        return approvalDate;
-    }
-
-    public void setApprovalDate(String approvalDate) {
-        this.approvalDate = approvalDate;
-    }
-
-    public String getCancellationReason() {
-        return cancellationReason;
-    }
-
-    public void setCancellationReason(String cancellationReason) {
-        this.cancellationReason = cancellationReason;
-    }
-
-    public Integer getOriginalJobId() {
-        return originalJobId;
-    }
-
-    public void setOriginalJobId(Integer originalJobId) {
-        this.originalJobId = originalJobId;
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 
     public String getCreatedAt() {
@@ -310,8 +268,6 @@ public class RepairJob {
 
     @Override
     public String toString() {
-        return "Job #" + jobId + " [" + currentStatus.getDisplayName() + "] - " +
-                (deviceSummary != null ? deviceSummary : "Device #" + deviceId);
+        return "RepairJob #" + jobId + " [" + (currentStatus != null ? currentStatus.getDisplayName() : "Unknown") + "]";
     }
 }
-

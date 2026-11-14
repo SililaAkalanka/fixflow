@@ -3,18 +3,17 @@ package com.fixflow.model;
 import java.util.Objects;
 
 /**
- * Domain model representing a repair payment and invoice record.
- * Implements Section 7.4 and Section 8.12 of the FixFlow Project Specification.
+ * Domain model representing a repair payment transaction.
+ * Supports multiple partial cash payments per repair job.
  */
 public class Payment {
 
     private int paymentId;
     private int jobId;
     private String paymentDate;
-    private double totalRepairCost;
     private double amountPaid;
     private String paymentMethod = "CASH";
-    private String paymentStatus = "PAID";
+    private String notes;
     private String createdAt;
 
     // Joined auxiliary fields for UI presentation and invoice generation
@@ -24,28 +23,29 @@ public class Payment {
     private String technicianName;
     private double labourCharges;
     private double partsCost;
+    private double totalRepairCost;
+    private String paymentStatus;
 
     public Payment() {
+        this.paymentMethod = "CASH";
     }
 
-    public Payment(int jobId, String paymentDate, double totalRepairCost, double amountPaid) {
+    public Payment(int jobId, String paymentDate, double amountPaid, String notes) {
         this.jobId = jobId;
         this.paymentDate = paymentDate;
-        this.totalRepairCost = totalRepairCost;
         this.amountPaid = amountPaid;
         this.paymentMethod = "CASH";
-        this.paymentStatus = "PAID";
+        this.notes = notes;
     }
 
-    public Payment(int paymentId, int jobId, String paymentDate, double totalRepairCost, double amountPaid,
-                   String paymentMethod, String paymentStatus, String createdAt) {
+    public Payment(int paymentId, int jobId, String paymentDate, double amountPaid,
+                   String paymentMethod, String notes, String createdAt) {
         this.paymentId = paymentId;
         this.jobId = jobId;
         this.paymentDate = paymentDate;
-        this.totalRepairCost = totalRepairCost;
         this.amountPaid = amountPaid;
-        this.paymentMethod = paymentMethod;
-        this.paymentStatus = paymentStatus;
+        this.paymentMethod = paymentMethod != null ? paymentMethod : "CASH";
+        this.notes = notes;
         this.createdAt = createdAt;
     }
 
@@ -75,14 +75,6 @@ public class Payment {
         this.paymentDate = paymentDate;
     }
 
-    public double getTotalRepairCost() {
-        return totalRepairCost;
-    }
-
-    public void setTotalRepairCost(double totalRepairCost) {
-        this.totalRepairCost = totalRepairCost;
-    }
-
     public double getAmountPaid() {
         return amountPaid;
     }
@@ -99,12 +91,12 @@ public class Payment {
         this.paymentMethod = paymentMethod;
     }
 
-    public String getPaymentStatus() {
-        return paymentStatus;
+    public String getNotes() {
+        return notes;
     }
 
-    public void setPaymentStatus(String paymentStatus) {
-        this.paymentStatus = paymentStatus;
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 
     public String getCreatedAt() {
@@ -113,6 +105,22 @@ public class Payment {
 
     public void setCreatedAt(String createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public double getTotalRepairCost() {
+        return totalRepairCost;
+    }
+
+    public void setTotalRepairCost(double totalRepairCost) {
+        this.totalRepairCost = totalRepairCost;
+    }
+
+    public String getPaymentStatus() {
+        return paymentStatus;
+    }
+
+    public void setPaymentStatus(String paymentStatus) {
+        this.paymentStatus = paymentStatus;
     }
 
     public String getCustomerName() {
@@ -179,7 +187,6 @@ public class Payment {
     @Override
     public String toString() {
         return "Payment #" + paymentId + " [Job #" + jobId + "] - Amount: LKR " +
-                String.format("%.2f", amountPaid) + " (" + paymentStatus + ")";
+                String.format("%.2f", amountPaid);
     }
 }
-

@@ -20,10 +20,10 @@ class CustomerDBTest {
     @BeforeEach
     void setUp() throws SQLException {
         String testUrl = "jdbc:sqlite:file:custdb_test?mode=memory&cache=shared";
-        DatabaseManager.setCustomJdbcUrl(testUrl);
+        DatabaseConnection.setCustomJdbcUrl(testUrl);
 
-        sharedMemoryConnection = DatabaseManager.getConnection();
-        DatabaseManager.initializeDatabase();
+        sharedMemoryConnection = DatabaseConnection.getConnection();
+        DatabaseInitializer.initializeDatabase();
     }
 
     @AfterEach
@@ -31,7 +31,7 @@ class CustomerDBTest {
         if (sharedMemoryConnection != null && !sharedMemoryConnection.isClosed()) {
             sharedMemoryConnection.close();
         }
-        DatabaseManager.setCustomJdbcUrl(null);
+        DatabaseConnection.setCustomJdbcUrl(null);
     }
 
     @Test
@@ -111,7 +111,7 @@ class CustomerDBTest {
 
         // Insert dummy device & repair job referencing this customer
         int devId;
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO devices (customer_id, category, brand, model, created_at) VALUES (?, 'Phone', 'Apple', 'iPhone', datetime('now'))",
                      PreparedStatement.RETURN_GENERATED_KEYS)) {
@@ -122,7 +122,7 @@ class CustomerDBTest {
             devId = rs.getInt(1);
         }
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO repair_jobs (customer_id, device_id, date_received, initial_problem, current_status, created_at, updated_at) " +
                              "VALUES (?, ?, datetime('now'), 'Screen broken', 'RECEIVED', datetime('now'), datetime('now'))")) {

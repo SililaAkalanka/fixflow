@@ -15,8 +15,7 @@ import java.awt.*;
 
 /**
  * Operational Dashboard presenting real-time business KPIs, status distribution,
- * financial summaries, and inventory alerts tailored to the logged-in role.
- * Implements Section 7.8 of the FixFlow Project Specification.
+ * financial summaries, and inventory alerts.
  */
 public class DashboardPanel extends BasePanel {
 
@@ -26,8 +25,8 @@ public class DashboardPanel extends BasePanel {
     // Metric Value Labels
     private final JLabel totalJobsVal = new JLabel("0");
     private final JLabel activeJobsVal = new JLabel("0");
-    private final JLabel waitingPartsVal = new JLabel("0");
-    private final JLabel readyCollectionVal = new JLabel("0");
+    private final JLabel completedJobsVal = new JLabel("0");
+    private final JLabel collectedJobsVal = new JLabel("0");
     private final JLabel totalRevenueVal = new JLabel("LKR 0.00");
     private final JLabel lowStockVal = new JLabel("0");
 
@@ -36,18 +35,19 @@ public class DashboardPanel extends BasePanel {
     private final JLabel techActiveVal = new JLabel("0");
     private final JLabel techDoneTodayVal = new JLabel("0");
 
-    // Breakdown Labels
+    // Breakdown Labels (6 statuses)
     private final JLabel receivedCountLbl = new JLabel("0");
     private final JLabel diagnosingCountLbl = new JLabel("0");
-    private final JLabel waitingApprovalCountLbl = new JLabel("0");
-    private final JLabel repairingCountLbl = new JLabel("0");
+    private final JLabel inProgressCountLbl = new JLabel("0");
+    private final JLabel completedCountLbl = new JLabel("0");
     private final JLabel collectedCountLbl = new JLabel("0");
     private final JLabel cancelledCountLbl = new JLabel("0");
 
-    // Financial & Inventory Overview Labels
+    // Overview Labels
+    private final JLabel totalCustomersLbl = new JLabel("0");
+    private final JLabel totalTechniciansLbl = new JLabel("0");
     private final JLabel todayIntakesLbl = new JLabel("0");
     private final JLabel todayRevenueLbl = new JLabel("LKR 0.00");
-    private final JLabel pendingReceivablesLbl = new JLabel("LKR 0.00");
     private final JLabel inventoryValuationLbl = new JLabel("LKR 0.00");
     private final JLabel outOfStockLbl = new JLabel("0");
 
@@ -87,11 +87,11 @@ public class DashboardPanel extends BasePanel {
 
         // Metric Cards (3x2 Grid)
         JPanel cardsGrid = new JPanel(new GridLayout(2, 3, 14, 14));
-        cardsGrid.add(createMetricCard("Total Repair Volume", "All-time recorded repair jobs", totalJobsVal, new Color(0, 102, 204)));
-        cardsGrid.add(createMetricCard("Active In-Progress", "Repairs currently in shop", activeJobsVal, new Color(0, 120, 215)));
-        cardsGrid.add(createMetricCard("Waiting for Parts", "Blocked pending component arrival", waitingPartsVal, new Color(216, 59, 1)));
-        cardsGrid.add(createMetricCard("Ready for Collection", "Completed & awaiting payment/pickup", readyCollectionVal, new Color(16, 124, 65)));
-        cardsGrid.add(createMetricCard("Total Revenue Settled", "Cash collected from completed jobs", totalRevenueVal, new Color(11, 107, 79)));
+        cardsGrid.add(createMetricCard("Total Repair Volume", "All recorded repair jobs", totalJobsVal, new Color(0, 102, 204)));
+        cardsGrid.add(createMetricCard("Active In-Progress", "Repairs currently being serviced", activeJobsVal, new Color(0, 120, 215)));
+        cardsGrid.add(createMetricCard("Completed Repairs", "Ready for collection / pickup", completedJobsVal, new Color(16, 124, 65)));
+        cardsGrid.add(createMetricCard("Collected & Settled", "Completed & picked up by customer", collectedJobsVal, new Color(100, 100, 100)));
+        cardsGrid.add(createMetricCard("Total Revenue Settled", "Cash collected from payments", totalRevenueVal, new Color(11, 107, 79)));
         cardsGrid.add(createMetricCard("Low Stock Alerts", "Parts at or below reorder threshold", lowStockVal, new Color(177, 24, 1)));
 
         // Technician Special Cards (shown if technician)
@@ -100,7 +100,7 @@ public class DashboardPanel extends BasePanel {
         techCardPanel.add(createMetricCard("My Completed Today", "Jobs you finished today", techDoneTodayVal, new Color(16, 124, 65)));
         techCardPanel.setVisible(false);
 
-        // 3. Lower Section: Status Breakdown & Financial Health
+        // 3. Lower Section: Status Breakdown & Shop Summary
         JPanel lowerSection = new JPanel(new GridLayout(1, 2, 16, 0));
         lowerSection.setBorder(new EmptyBorder(16, 0, 0, 0));
 
@@ -110,36 +110,36 @@ public class DashboardPanel extends BasePanel {
                 new TitledBorder("Repair Lifecycle Distribution"),
                 new EmptyBorder(8, 12, 8, 12)
         ));
-        statusBox.add(new JLabel("Received (Pending Diagnostics):"));
+        statusBox.add(new JLabel("Received:"));
         statusBox.add(receivedCountLbl);
         statusBox.add(new JLabel("Diagnosing:"));
         statusBox.add(diagnosingCountLbl);
-        statusBox.add(new JLabel("Waiting for Approval:"));
-        statusBox.add(waitingApprovalCountLbl);
-        statusBox.add(new JLabel("Actively Repairing:"));
-        statusBox.add(repairingCountLbl);
-        statusBox.add(new JLabel("Collected & Closed:"));
+        statusBox.add(new JLabel("In Progress:"));
+        statusBox.add(inProgressCountLbl);
+        statusBox.add(new JLabel("Completed:"));
+        statusBox.add(completedCountLbl);
+        statusBox.add(new JLabel("Collected:"));
         statusBox.add(collectedCountLbl);
-        statusBox.add(new JLabel("Cancelled Jobs:"));
+        statusBox.add(new JLabel("Cancelled:"));
         statusBox.add(cancelledCountLbl);
 
-        // Right Box: Financial & Inventory Health
-        JPanel financeBox = new JPanel(new GridLayout(5, 2, 8, 8));
+        // Right Box: Overview & Inventory Health
+        JPanel financeBox = new JPanel(new GridLayout(6, 2, 8, 8));
         financeBox.setBorder(new CompoundBorder(
-                new TitledBorder("Financial & Inventory Health"),
+                new TitledBorder("Shop Overview & Inventory"),
                 new EmptyBorder(8, 12, 8, 12)
         ));
+        financeBox.add(new JLabel("Total Registered Customers:"));
+        financeBox.add(totalCustomersLbl);
+        financeBox.add(new JLabel("Active Technicians:"));
+        financeBox.add(totalTechniciansLbl);
         financeBox.add(new JLabel("Today's Intakes:"));
         financeBox.add(todayIntakesLbl);
-        financeBox.add(new JLabel("Today's Cash Settled:"));
+        financeBox.add(new JLabel("Today's Cash Collected:"));
         todayRevenueLbl.setForeground(new Color(16, 124, 65));
         todayRevenueLbl.setFont(todayRevenueLbl.getFont().deriveFont(Font.BOLD));
         financeBox.add(todayRevenueLbl);
-        financeBox.add(new JLabel("Pending Receivables (Ready for Collection):"));
-        pendingReceivablesLbl.setForeground(new Color(210, 110, 0));
-        pendingReceivablesLbl.setFont(pendingReceivablesLbl.getFont().deriveFont(Font.BOLD));
-        financeBox.add(pendingReceivablesLbl);
-        financeBox.add(new JLabel("Total Inventory Asset Valuation:"));
+        financeBox.add(new JLabel("Inventory Asset Valuation:"));
         financeBox.add(inventoryValuationLbl);
         financeBox.add(new JLabel("Out of Stock Spare Parts:"));
         outOfStockLbl.setForeground(new Color(180, 20, 20));
@@ -189,7 +189,7 @@ public class DashboardPanel extends BasePanel {
         UserRole role = SessionManager.getCurrentRole();
         String username = SessionManager.getCurrentUser() != null ? SessionManager.getCurrentUser().getUsername() : "User";
         welcomeLabel.setText("Welcome back, " + username + "!");
-        roleBadgeLabel.setText("Active Role: " + (role != null ? role.getDisplayName() : "Unknown") + " — Real-time operational oversight");
+        roleBadgeLabel.setText("Active Role: " + (role != null ? role.getDisplayName() : "Unknown"));
 
         boolean isTech = (role == UserRole.TECHNICIAN);
         techCardPanel.setVisible(isTech);
@@ -207,8 +207,8 @@ public class DashboardPanel extends BasePanel {
 
         totalJobsVal.setText(String.valueOf(m.getTotalJobs()));
         activeJobsVal.setText(String.valueOf(m.getActiveJobs()));
-        waitingPartsVal.setText(String.valueOf(m.getWaitingPartsJobs()));
-        readyCollectionVal.setText(String.valueOf(m.getReadyForCollectionJobs()));
+        completedJobsVal.setText(String.valueOf(m.getCompletedJobs()));
+        collectedJobsVal.setText(String.valueOf(m.getCollectedJobs()));
         totalRevenueVal.setText(String.format("LKR %.2f", m.getTotalRevenue()));
         lowStockVal.setText(String.valueOf(m.getLowStockCount()));
 
@@ -219,15 +219,16 @@ public class DashboardPanel extends BasePanel {
         // Status breakdown
         receivedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.RECEIVED)));
         diagnosingCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.DIAGNOSING)));
-        waitingApprovalCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.WAITING_FOR_APPROVAL)));
-        repairingCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.REPAIRING)));
+        inProgressCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.IN_PROGRESS)));
+        completedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COMPLETED)));
         collectedCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.COLLECTED)));
         cancelledCountLbl.setText(String.valueOf(m.getStatusCount(RepairStatus.CANCELLED)));
 
-        // Financial & inventory health
+        // Overview
+        totalCustomersLbl.setText(String.valueOf(m.getTotalCustomers()));
+        totalTechniciansLbl.setText(String.valueOf(m.getTotalTechnicians()));
         todayIntakesLbl.setText(String.valueOf(m.getTodayJobs()) + " devices");
         todayRevenueLbl.setText(String.format("LKR %.2f", m.getTodayRevenue()));
-        pendingReceivablesLbl.setText(String.format("LKR %.2f", m.getPendingRevenue()));
         inventoryValuationLbl.setText(String.format("LKR %.2f", m.getTotalInventoryValuation()));
         outOfStockLbl.setText(String.valueOf(m.getOutOfStockCount()) + " parts");
     }

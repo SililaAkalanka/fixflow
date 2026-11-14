@@ -14,8 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * First-Launch Setup Wizard for configuring administrator and shared role credentials.
- * Implements Section 6.2 of the FixFlow Project Specification.
+ * First-Launch Setup Wizard for configuring Administrator and Technician credentials.
  */
 public class SetupFrame extends JFrame {
 
@@ -23,17 +22,8 @@ public class SetupFrame extends JFrame {
     private final JPasswordField adminPassField = new JPasswordField(18);
     private final JPasswordField adminConfirmPassField = new JPasswordField(18);
 
-    private final JTextField managerUserField = new JTextField("manager", 18);
-    private final JPasswordField managerPassField = new JPasswordField(18);
-
-    private final JTextField receptionistUserField = new JTextField("receptionist", 18);
-    private final JPasswordField receptionistPassField = new JPasswordField(18);
-
-    private final JTextField techUserField = new JTextField("technician", 18);
+    private final JTextField techUserField = new JTextField("tech", 18);
     private final JPasswordField techPassField = new JPasswordField(18);
-
-    private final JTextField inventoryUserField = new JTextField("inventory", 18);
-    private final JPasswordField inventoryPassField = new JPasswordField(18);
 
     public SetupFrame() {
         super("FixFlow – Initial System Setup");
@@ -42,8 +32,8 @@ public class SetupFrame extends JFrame {
 
     private void initUI() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(650, 720);
-        setMinimumSize(new Dimension(580, 600));
+        setSize(560, 520);
+        setMinimumSize(new Dimension(500, 460));
         setLocationRelativeTo(null);
 
         JPanel mainPanel = new JPanel(new BorderLayout(0, 15));
@@ -54,10 +44,10 @@ public class SetupFrame extends JFrame {
         headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
 
         JLabel titleLabel = new JLabel("FixFlow Initial Setup");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel descLabel = new JLabel("Configure credentials for the 5 shared roles. Passwords will be securely hashed with BCrypt.");
+        JLabel descLabel = new JLabel("Configure initial credentials for Administrator and Technician accounts.");
         descLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         descLabel.setForeground(Color.GRAY);
         descLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -72,13 +62,7 @@ public class SetupFrame extends JFrame {
 
         formContainer.add(createRolePanel("1. Administrator (Full System Access)", UserRole.ADMINISTRATOR, adminUserField, adminPassField, adminConfirmPassField));
         formContainer.add(Box.createRigidArea(new Dimension(0, 12)));
-        formContainer.add(createRolePanel("2. Manager (Operations & Reporting)", UserRole.MANAGER, managerUserField, managerPassField, null));
-        formContainer.add(Box.createRigidArea(new Dimension(0, 12)));
-        formContainer.add(createRolePanel("3. Receptionist (Intake & Customer Facing)", UserRole.RECEPTIONIST, receptionistUserField, receptionistPassField, null));
-        formContainer.add(Box.createRigidArea(new Dimension(0, 12)));
-        formContainer.add(createRolePanel("4. Technician (Diagnostics & Repair Tasks)", UserRole.TECHNICIAN, techUserField, techPassField, null));
-        formContainer.add(Box.createRigidArea(new Dimension(0, 12)));
-        formContainer.add(createRolePanel("5. Inventory Staff (Parts & Stock)", UserRole.INVENTORY_STAFF, inventoryUserField, inventoryPassField, null));
+        formContainer.add(createRolePanel("2. Technician (Diagnostics & Repair Tasks)", UserRole.TECHNICIAN, techUserField, techPassField, null));
 
         JScrollPane scrollPane = new JScrollPane(formContainer);
         scrollPane.setBorder(null);
@@ -155,25 +139,12 @@ public class SetupFrame extends JFrame {
         String adminPass = new String(adminPassField.getPassword());
         String adminConfirmPass = new String(adminConfirmPassField.getPassword());
 
-        String managerUser = managerUserField.getText().trim();
-        String managerPass = new String(managerPassField.getPassword());
-
-        String recepUser = receptionistUserField.getText().trim();
-        String recepPass = new String(receptionistPassField.getPassword());
-
         String techUser = techUserField.getText().trim();
         String techPass = new String(techPassField.getPassword());
 
-        String invUser = inventoryUserField.getText().trim();
-        String invPass = new String(inventoryPassField.getPassword());
-
         // Validation: Required fields
-        if (adminUser.isEmpty() || adminPass.isEmpty() ||
-                managerUser.isEmpty() || managerPass.isEmpty() ||
-                recepUser.isEmpty() || recepPass.isEmpty() ||
-                techUser.isEmpty() || techPass.isEmpty() ||
-                invUser.isEmpty() || invPass.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter usernames and passwords for all 5 roles.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+        if (adminUser.isEmpty() || adminPass.isEmpty() || techUser.isEmpty() || techPass.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter usernames and passwords for both Administrator and Technician roles.", "Validation Error", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -184,7 +155,7 @@ public class SetupFrame extends JFrame {
         }
 
         // Validation: Minimum length
-        if (adminPass.length() < 4 || managerPass.length() < 4 || recepPass.length() < 4 || techPass.length() < 4 || invPass.length() < 4) {
+        if (adminPass.length() < 4 || techPass.length() < 4) {
             JOptionPane.showMessageDialog(this, "Passwords must be at least 4 characters in length.", "Validation Error", JOptionPane.WARNING_MESSAGE);
             return;
         }
@@ -192,12 +163,9 @@ public class SetupFrame extends JFrame {
         // Validation: Unique usernames
         Set<String> usernames = new HashSet<>();
         usernames.add(adminUser.toLowerCase());
-        usernames.add(managerUser.toLowerCase());
-        usernames.add(recepUser.toLowerCase());
         usernames.add(techUser.toLowerCase());
-        usernames.add(invUser.toLowerCase());
 
-        if (usernames.size() < 5) {
+        if (usernames.size() < 2) {
             JOptionPane.showMessageDialog(this, "Each role must have a distinct, unique username.", "Validation Error", JOptionPane.WARNING_MESSAGE);
             return;
         }
@@ -205,15 +173,12 @@ public class SetupFrame extends JFrame {
         // Save credentials
         Map<UserRole, UserDB.RoleCredential> credentials = new EnumMap<>(UserRole.class);
         credentials.put(UserRole.ADMINISTRATOR, new UserDB.RoleCredential(adminUser, adminPass));
-        credentials.put(UserRole.MANAGER, new UserDB.RoleCredential(managerUser, managerPass));
-        credentials.put(UserRole.RECEPTIONIST, new UserDB.RoleCredential(recepUser, recepPass));
         credentials.put(UserRole.TECHNICIAN, new UserDB.RoleCredential(techUser, techPass));
-        credentials.put(UserRole.INVENTORY_STAFF, new UserDB.RoleCredential(invUser, invPass));
 
         try {
             UserDB.setupAllRoles(credentials);
             JOptionPane.showMessageDialog(this,
-                    "FixFlow initial setup has been successfully completed!\nYou may now sign in using any role's credentials.",
+                    "FixFlow initial setup has been successfully completed!\nYou may now sign in using your credentials.",
                     "Setup Complete",
                     JOptionPane.INFORMATION_MESSAGE);
 
@@ -230,4 +195,3 @@ public class SetupFrame extends JFrame {
         }
     }
 }
-

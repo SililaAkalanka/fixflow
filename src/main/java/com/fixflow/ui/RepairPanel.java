@@ -16,8 +16,9 @@ import com.fixflow.model.Payment;
 import com.fixflow.model.RepairJob;
 import com.fixflow.model.RepairPartUsage;
 import com.fixflow.model.SparePart;
-import com.fixflow.model.StatusHistory;
 import com.fixflow.model.Technician;
+import com.fixflow.service.PaymentService;
+import com.fixflow.service.RepairService;
 import com.fixflow.util.PdfInvoiceGenerator;
 import com.fixflow.util.SessionManager;
 import com.fixflow.util.ValidationUtil;
@@ -36,15 +37,16 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Core repair management panel.
- * Implements Section 7.3 and Section 8 of the FixFlow Project Specification.
+ * Core repair management panel with simplified 6-status lifecycle.
+ * Lifecycle: RECEIVED -> DIAGNOSING -> IN_PROGRESS -> COMPLETED -> COLLECTED
+ *                                                  \-> CANCELLED
  */
 public class RepairPanel extends BasePanel {
 
     private static final Logger LOGGER = Logger.getLogger(RepairPanel.class.getName());
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"Job #", "Customer", "Device", "Assigned Tech", "Status", "Approval", "Date Received", "Est. Cost (LKR)"}, 0
+            new Object[]{"Job #", "Customer", "Device", "Assigned Tech", "Status", "Date Received", "Est. Cost (LKR)", "Labour (LKR)", "Notes"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -55,8 +57,7 @@ public class RepairPanel extends BasePanel {
     private final JTable repairTable = new JTable(tableModel);
     private final JTextField searchField = new JTextField(18);
     private final JComboBox<String> statusFilterCombo = new JComboBox<>(new String[]{
-            "All Statuses", "Received", "Diagnosing", "Waiting for Approval",
-            "Waiting for Parts", "Repairing", "Ready for Collection", "Collected", "Cancelled"
+            "All Statuses", "Received", "Diagnosing", "In Progress", "Completed", "Collected", "Cancelled"
     });
     private final JCheckBox myJobsOnlyCheck = new JCheckBox("My Assigned Jobs Only");
     private final JLabel scopeLabel = new JLabel();
@@ -65,14 +66,13 @@ public class RepairPanel extends BasePanel {
     private JButton assignTechBtn;
     private JButton recordDiagnosisBtn;
     private JButton partsUsedBtn;
-    private JButton approvalBtn;
     private JButton updateStatusBtn;
     private JButton invoiceBtn;
-    private JButton viewHistoryBtn;
+    private JButton viewDetailsBtn;
     private JButton deleteJobBtn;
 
     public RepairPanel() {
-        super("Repair Job Management", "Track end-to-end repair lifecycle, technician assignments, diagnostics, and status progression");
+        super("Repair Job Management", "Track repair lifecycle, technician assignments, diagnostics, spare parts, and collection");
         initUI();
     }
 
@@ -132,10 +132,8 @@ public class RepairPanel extends BasePanel {
                     String statusStr = value.toString();
                     if (statusStr.contains("Received")) setForeground(new Color(70, 90, 150));
                     else if (statusStr.contains("Diagnosing")) setForeground(new Color(130, 40, 160));
-                    else if (statusStr.contains("Waiting for Approval")) setForeground(new Color(210, 110, 0));
-                    else if (statusStr.contains("Waiting for Parts")) setForeground(new Color(170, 70, 0));
-                    else if (statusStr.contains("Repairing")) setForeground(new Color(0, 110, 210));
-                    else if (statusStr.contains("Ready for Collection")) setForeground(new Color(16, 124, 65));
+                    else if (statusStr.contains("In Progress")) setForeground(new Color(0, 110, 210));
+                    else if (statusStr.contains("Completed")) setForeground(new Color(16, 124, 65));
                     else if (statusStr.contains("Collected")) setForeground(new Color(100, 100, 100));
                     else if (statusStr.contains("Cancelled")) setForeground(new Color(180, 20, 20));
                 }
@@ -149,14 +147,17 @@ public class RepairPanel extends BasePanel {
         JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         bottomBar.setBorder(new EmptyBorder(5, 0, 0, 0));
 
+        viewDetailsBtn = new JButton("View Job Details & Notes");
+        viewDetailsBtn.addActionListener(e -> handleViewDetails());
+
+        partsUsedBtn = new JButton("Parts Used");
+        partsUsedBtn.addActionListener(e -> handleManagePartsUsed());
+
         assignTechBtn = new JButton("Assign Technician");
         assignTechBtn.addActionListener(e -> handleAssignTechnician());
 
         recordDiagnosisBtn = new JButton("Record Diagnosis");
         recordDiagnosisBtn.addActionListener(e -> handleRecordDiagnosis());
-
-        approvalBtn = new JButton("Customer Approval");
-        approvalBtn.addActionListener(e -> handleCustomerApproval());
 
         updateStatusBtn = new JButton("Update Status");
         updateStatusBtn.addActionListener(e -> handleUpdateStatus());
@@ -164,21 +165,14 @@ public class RepairPanel extends BasePanel {
         invoiceBtn = new JButton("PDF Invoice");
         invoiceBtn.addActionListener(e -> handleExportPdfInvoice());
 
-        partsUsedBtn = new JButton("Parts Used");
-        partsUsedBtn.addActionListener(e -> handleManagePartsUsed());
-
-        viewHistoryBtn = new JButton("Job History & Notes");
-        viewHistoryBtn.addActionListener(e -> handleViewHistory());
-
         deleteJobBtn = new JButton("Delete Job");
         deleteJobBtn.setForeground(new Color(200, 30, 30));
         deleteJobBtn.addActionListener(e -> handleDeleteJob());
 
-        bottomBar.add(viewHistoryBtn);
+        bottomBar.add(viewDetailsBtn);
         bottomBar.add(partsUsedBtn);
         bottomBar.add(assignTechBtn);
         bottomBar.add(recordDiagnosisBtn);
-        bottomBar.add(approvalBtn);
         bottomBar.add(updateStatusBtn);
         bottomBar.add(invoiceBtn);
         bottomBar.add(deleteJobBtn);
@@ -197,22 +191,18 @@ public class RepairPanel extends BasePanel {
     private void applyRolePermissions() {
         UserRole role = SessionManager.getCurrentRole();
         boolean isTech = role == UserRole.TECHNICIAN;
-        boolean isRecep = role == UserRole.RECEPTIONIST;
         boolean isAdmin = SessionManager.isAdmin();
 
-        newJobBtn.setVisible(isRecep || isAdmin || role == UserRole.MANAGER);
-        assignTechBtn.setVisible(isRecep || isAdmin || role == UserRole.MANAGER);
-        approvalBtn.setVisible(isRecep || isAdmin || role == UserRole.MANAGER);
         deleteJobBtn.setVisible(isAdmin);
 
         myJobsOnlyCheck.setVisible(isTech);
         if (isTech) {
             myJobsOnlyCheck.setSelected(true);
-            scopeLabel.setText("Mode: Technician (Assigned Focus)");
+            scopeLabel.setText("Mode: Technician");
             scopeLabel.setForeground(new Color(0, 120, 215));
         } else {
             myJobsOnlyCheck.setSelected(false);
-            scopeLabel.setText("Mode: Operations Oversight");
+            scopeLabel.setText("Mode: Administrator");
             scopeLabel.setForeground(new Color(16, 124, 65));
         }
     }
@@ -234,7 +224,6 @@ public class RepairPanel extends BasePanel {
 
         Integer techFilter = null;
         if (myJobsOnlyCheck.isSelected() && SessionManager.hasRole(UserRole.TECHNICIAN)) {
-            // Find technician record matching current username or prompt
             try {
                 String userName = SessionManager.getCurrentUser().getUsername();
                 List<Technician> techs = TechnicianDB.getAllTechnicians();
@@ -254,17 +243,18 @@ public class RepairPanel extends BasePanel {
                 tableModel.addRow(new Object[]{
                         j.getJobId(),
                         j.getCustomerName() != null ? j.getCustomerName() : ("Cust #" + j.getCustomerId()),
-                        j.getDeviceSummary() != null ? j.getDeviceSummary() : ("Device #" + j.getDeviceId()),
+                        j.getDeviceSummary() != null ? j.getDeviceSummary() : ("Dev #" + j.getDeviceId()),
                         j.getTechnicianName() != null ? j.getTechnicianName() : "Unassigned",
                         j.getCurrentStatus().getDisplayName(),
-                        j.getApprovalStatus(),
                         j.getDateReceived(),
-                        j.getEstimatedCost() != null ? String.format("%.2f", j.getEstimatedCost()) : "–"
+                        j.getEstimatedCost() != null ? String.format("%.2f", j.getEstimatedCost()) : "–",
+                        String.format("%.2f", j.getLabourCharges()),
+                        j.getNotes() != null ? j.getNotes() : "–"
                 });
             }
-        } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "Failed to load repair jobs", e);
-            JOptionPane.showMessageDialog(this, "Failed to load repair jobs: " + e.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+        } catch (SQLException ex) {
+            LOGGER.log(Level.SEVERE, "Error searching repair jobs", ex);
+            JOptionPane.showMessageDialog(this, "Failed to load repair jobs: " + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -282,29 +272,28 @@ public class RepairPanel extends BasePanel {
         if (jobId == null) return;
 
         try {
-            List<Technician> activeTechs = TechnicianDB.getActiveTechnicians();
-            if (activeTechs.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "No active technicians are currently available for assignment.\nPlease activate or add a technician first.", "No Active Technicians", JOptionPane.WARNING_MESSAGE);
+            List<Technician> techs = TechnicianDB.getActiveTechnicians();
+            if (techs.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No active technicians are registered.", "Warning", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
             JComboBox<TechnicianItem> techCombo = new JComboBox<>();
-            for (Technician t : activeTechs) {
+            for (Technician t : techs) {
                 techCombo.addItem(new TechnicianItem(t.getTechnicianId(), t.getName() + " (" + (t.getSpecialization() != null ? t.getSpecialization() : "General") + ")"));
             }
 
             int result = JOptionPane.showConfirmDialog(
                     this,
-                    new Object[]{"Assign active technician to Job #" + jobId + ":", techCombo},
-                    "Assign Technician",
+                    techCombo,
+                    "Assign Technician to Job #" + jobId,
                     JOptionPane.OK_CANCEL_OPTION
             );
 
             if (result == JOptionPane.OK_OPTION) {
                 TechnicianItem selected = (TechnicianItem) techCombo.getSelectedItem();
                 if (selected != null) {
-                    String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Staff";
-                    RepairDB.assignTechnician(jobId, selected.techId, roleName);
+                    RepairService.assignTechnician(jobId, selected.techId);
                     JOptionPane.showMessageDialog(this, "Technician successfully assigned to Job #" + jobId + ".", "Assignment Saved", JOptionPane.INFORMATION_MESSAGE);
                     loadRepairJobs();
                 }
@@ -323,7 +312,6 @@ public class RepairPanel extends BasePanel {
             RepairJob job = RepairDB.getRepairJobById(jobId);
             if (job == null) return;
 
-            // Enforce §7.3: Technicians can update only their assigned jobs
             if (!canUserModifyJob(job)) {
                 JOptionPane.showMessageDialog(this, "Permission Denied: Technicians can only update repair jobs assigned to them.", "Restricted Action", JOptionPane.WARNING_MESSAGE);
                 return;
@@ -332,60 +320,6 @@ public class RepairPanel extends BasePanel {
             openDiagnosisDialog(job);
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Error fetching job for diagnosis", ex);
-        }
-    }
-
-    private void handleCustomerApproval() {
-        Integer jobId = getSelectedJobId();
-        if (jobId == null) return;
-
-        try {
-            RepairJob job = RepairDB.getRepairJobById(jobId);
-            if (job == null) return;
-
-            if (job.getCurrentStatus() != RepairStatus.WAITING_FOR_APPROVAL) {
-                JOptionPane.showMessageDialog(this,
-                        "Job #" + jobId + " is currently in status '" + job.getCurrentStatus().getDisplayName() + "'.\n" +
-                        "Customer approval can only be recorded when the job is in 'Waiting for Approval'.",
-                        "Approval Not Applicable",
-                        JOptionPane.INFORMATION_MESSAGE);
-                return;
-            }
-
-            String[] options = {"Approve (Begin Repair Work)", "Reject (Cancel Job)", "Cancel"};
-            int choice = JOptionPane.showOptionDialog(
-                    this,
-                    "Customer: " + job.getCustomerName() + " (Tel: " + job.getCustomerPhone() + ")\n" +
-                    "Device: " + job.getDeviceSummary() + "\n" +
-                    "Estimated Total Cost: LKR " + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0) + "\n\n" +
-                    "Please record the customer's approval decision:",
-                    "Customer Approval Decision",
-                    JOptionPane.YES_NO_CANCEL_OPTION,
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    options,
-                    options[0]
-            );
-
-            String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Staff";
-
-            if (choice == 0) { // Approve
-                RepairDB.recordCustomerApproval(jobId, true, null, roleName);
-                JOptionPane.showMessageDialog(this, "Job #" + jobId + " approved! Status updated to 'Repairing'.", "Approved", JOptionPane.INFORMATION_MESSAGE);
-                loadRepairJobs();
-            } else if (choice == 1) { // Reject
-                String reason = JOptionPane.showInputDialog(this, "Please enter customer cancellation reason:", "Rejection Reason", JOptionPane.PLAIN_MESSAGE);
-                if (reason != null && !reason.trim().isEmpty()) {
-                    RepairDB.recordCustomerApproval(jobId, false, reason.trim(), roleName);
-                    JOptionPane.showMessageDialog(this, "Job #" + jobId + " cancelled due to customer rejection.", "Job Cancelled", JOptionPane.INFORMATION_MESSAGE);
-                    loadRepairJobs();
-                } else if (reason != null) {
-                    JOptionPane.showMessageDialog(this, "Cancellation reason is required when an estimate is rejected.", "Validation Error", JOptionPane.WARNING_MESSAGE);
-                }
-            }
-        } catch (Exception ex) {
-            LOGGER.log(Level.SEVERE, "Error recording approval", ex);
-            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(), "Approval Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -409,29 +343,28 @@ public class RepairPanel extends BasePanel {
             }
 
             JComboBox<RepairStatus> statusCombo = new JComboBox<>(nextStatuses.toArray(new RepairStatus[0]));
-            JTextField reasonField = new JTextField(20);
+            JTextField notesField = new JTextField(20);
 
             JPanel panel = new JPanel(new GridLayout(0, 1, 4, 8));
             panel.add(new JLabel("Current Status: " + job.getCurrentStatus().getDisplayName()));
             panel.add(new JLabel("Transition To:"));
             panel.add(statusCombo);
-            panel.add(new JLabel("Audit Note / Reason (Required if cancelling):"));
-            panel.add(reasonField);
+            panel.add(new JLabel("Notes / Reason (Required if cancelling):"));
+            panel.add(notesField);
 
             int result = JOptionPane.showConfirmDialog(this, panel, "Update Status for Job #" + jobId, JOptionPane.OK_CANCEL_OPTION);
             if (result == JOptionPane.OK_OPTION) {
                 RepairStatus selectedTarget = (RepairStatus) statusCombo.getSelectedItem();
-                String note = reasonField.getText().trim();
-                String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Staff";
+                String note = notesField.getText().trim();
 
                 try {
-                    RepairDB.updateStatus(jobId, selectedTarget, note, roleName);
+                    RepairService.updateStatus(jobId, selectedTarget, note);
                     JOptionPane.showMessageDialog(this, "Job #" + jobId + " transitioned to '" + selectedTarget.getDisplayName() + "'.", "Status Updated", JOptionPane.INFORMATION_MESSAGE);
                     loadRepairJobs();
                 } catch (InvalidStatusTransitionException | IllegalArgumentException ex) {
                     JOptionPane.showMessageDialog(this, ex.getMessage(), "Validation Error", JOptionPane.WARNING_MESSAGE);
                 } catch (IllegalStateException ex) {
-                    // Enforces Business Rule 13: A device cannot be collected until full payment is recorded
+                    // Collection payment guard
                     int payChoice = JOptionPane.showConfirmDialog(this,
                             ex.getMessage() + "\n\nWould you like to open the cash payment dialog now?",
                             "Payment Required Before Collection", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
@@ -453,18 +386,20 @@ public class RepairPanel extends BasePanel {
         if (jobId == null) return;
 
         try {
-            Payment payment = PaymentDB.getPaymentByJobId(jobId);
-            if (payment == null) {
+            List<Payment> payments = PaymentDB.getPaymentsByJobId(jobId);
+            if (payments.isEmpty()) {
                 JOptionPane.showMessageDialog(this,
-                        "No settled payment record found for Job #" + jobId + ".\n" +
-                        "An invoice can only be generated after full cash payment is recorded (Section 7.4).",
+                        "No payment records found for Job #" + jobId + ".\n" +
+                        "At least one payment must be recorded before an invoice or receipt can be generated.",
                         "Payment Required", JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
 
+            Payment latestPayment = payments.get(payments.size() - 1);
+
             JFileChooser chooser = new JFileChooser();
             chooser.setDialogTitle("Save FixFlow PDF Invoice");
-            chooser.setSelectedFile(new File("Invoice_INV-" + String.format("%05d", payment.getPaymentId()) + "_Job-" + jobId + ".pdf"));
+            chooser.setSelectedFile(new File("Invoice_Job-" + jobId + ".pdf"));
 
             if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 File targetFile = chooser.getSelectedFile();
@@ -472,7 +407,7 @@ public class RepairPanel extends BasePanel {
                     targetFile = new File(targetFile.getAbsolutePath() + ".pdf");
                 }
 
-                PdfInvoiceGenerator.generateInvoice(payment.getPaymentId(), targetFile);
+                PdfInvoiceGenerator.generateInvoice(latestPayment.getPaymentId(), targetFile);
 
                 int openChoice = JOptionPane.showConfirmDialog(this,
                         "PDF invoice successfully generated and saved to:\n" + targetFile.getAbsolutePath() +
@@ -493,49 +428,58 @@ public class RepairPanel extends BasePanel {
         }
     }
 
-    private void handleViewHistory() {
+    private void handleViewDetails() {
         Integer jobId = getSelectedJobId();
         if (jobId == null) return;
 
         try {
             RepairJob job = RepairDB.getRepairJobById(jobId);
-            List<StatusHistory> history = RepairDB.getStatusHistory(jobId);
+            if (job == null) return;
 
-            JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Job #" + jobId + " Details & Audit Trail", true);
-            dialog.setSize(620, 520);
+            double totalCost = PaymentService.calculateTotalCost(jobId);
+            double totalPaid = PaymentService.getTotalPaid(jobId);
+            double balance = PaymentService.getRemainingBalance(jobId);
+            String payStatus = PaymentService.getPaymentStatus(jobId).getDisplayName();
+
+            JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Job #" + jobId + " Details", true);
+            dialog.setSize(600, 520);
             dialog.setLocationRelativeTo(this);
 
             JPanel panel = new JPanel(new BorderLayout(0, 12));
             panel.setBorder(new EmptyBorder(15, 20, 15, 20));
 
-            // Job Summary Card
-            JPanel summary = new JPanel(new GridLayout(0, 2, 6, 6));
+            // Job Summary Overview
+            JPanel summary = new JPanel(new GridLayout(0, 2, 8, 8));
             summary.setBorder(new TitledBorder("Repair Job Overview"));
             summary.add(new JLabel("Customer: " + job.getCustomerName()));
             summary.add(new JLabel("Phone: " + job.getCustomerPhone()));
             summary.add(new JLabel("Device: " + job.getDeviceSummary()));
             summary.add(new JLabel("Technician: " + (job.getTechnicianName() != null ? job.getTechnicianName() : "Unassigned")));
             summary.add(new JLabel("Status: " + job.getCurrentStatus().getDisplayName()));
-            summary.add(new JLabel("Approval: " + job.getApprovalStatus()));
-            summary.add(new JLabel("Initial Problem: " + job.getInitialProblem()));
             summary.add(new JLabel("Date Received: " + job.getDateReceived()));
+            summary.add(new JLabel("Labour Charges: LKR " + String.format("%.2f", job.getLabourCharges())));
+            summary.add(new JLabel("Total Repair Cost: LKR " + String.format("%.2f", totalCost)));
+            summary.add(new JLabel("Total Paid: LKR " + String.format("%.2f", totalPaid)));
+            summary.add(new JLabel("Balance Due: LKR " + String.format("%.2f", balance) + " (" + payStatus + ")"));
 
-            if (job.getDiagnosisFindings() != null) {
-                summary.add(new JLabel("Diagnosis: " + job.getDiagnosisFindings()));
-                summary.add(new JLabel("Est. Cost: LKR " + String.format("%.2f", job.getEstimatedCost() != null ? job.getEstimatedCost() : 0.0)));
-            }
-            if (job.getCancellationReason() != null) {
-                summary.add(new JLabel("Cancellation Reason: " + job.getCancellationReason()));
-            }
+            // Detailed Text Areas
+            JPanel textPanel = new JPanel(new GridLayout(3, 1, 6, 6));
+            textPanel.setBorder(new TitledBorder("Technical Notes & Findings"));
 
-            // History List
-            DefaultListModel<String> listModel = new DefaultListModel<>();
-            for (StatusHistory h : history) {
-                listModel.addElement(h.toString());
-            }
-            JList<String> historyList = new JList<>(listModel);
-            JScrollPane scroll = new JScrollPane(historyList);
-            scroll.setBorder(new TitledBorder("Status Transition Audit Trail"));
+            JTextArea probArea = new JTextArea("Reported Problem:\n" + job.getInitialProblem());
+            probArea.setEditable(false);
+            probArea.setLineWrap(true);
+            textPanel.add(new JScrollPane(probArea));
+
+            JTextArea diagArea = new JTextArea("Diagnosis Findings:\n" + (job.getDiagnosisFindings() != null ? job.getDiagnosisFindings() : "None recorded."));
+            diagArea.setEditable(false);
+            diagArea.setLineWrap(true);
+            textPanel.add(new JScrollPane(diagArea));
+
+            JTextArea notesArea = new JTextArea("Repair Notes:\n" + (job.getNotes() != null ? job.getNotes() : "None."));
+            notesArea.setEditable(false);
+            notesArea.setLineWrap(true);
+            textPanel.add(new JScrollPane(notesArea));
 
             JButton closeBtn = new JButton("Close");
             closeBtn.addActionListener(e -> dialog.dispose());
@@ -543,13 +487,13 @@ public class RepairPanel extends BasePanel {
             btnP.add(closeBtn);
 
             panel.add(summary, BorderLayout.NORTH);
-            panel.add(scroll, BorderLayout.CENTER);
+            panel.add(textPanel, BorderLayout.CENTER);
             panel.add(btnP, BorderLayout.SOUTH);
 
             dialog.setContentPane(panel);
             dialog.setVisible(true);
         } catch (SQLException ex) {
-            LOGGER.log(Level.SEVERE, "Error viewing history", ex);
+            LOGGER.log(Level.SEVERE, "Error viewing job details", ex);
             JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -569,7 +513,7 @@ public class RepairPanel extends BasePanel {
 
         if (confirm == JOptionPane.YES_OPTION) {
             try {
-                boolean deleted = RepairDB.deleteRepairJob(jobId);
+                boolean deleted = RepairService.deleteRepairJob(jobId);
                 if (deleted) {
                     JOptionPane.showMessageDialog(this, "Repair Job #" + jobId + " deleted.", "Deleted", JOptionPane.INFORMATION_MESSAGE);
                     loadRepairJobs();
@@ -583,12 +527,11 @@ public class RepairPanel extends BasePanel {
 
     private boolean canUserModifyJob(RepairJob job) {
         UserRole role = SessionManager.getCurrentRole();
-        if (role == UserRole.ADMINISTRATOR || role == UserRole.MANAGER || role == UserRole.RECEPTIONIST) {
+        if (role == UserRole.ADMINISTRATOR) {
             return true;
         }
         if (role == UserRole.TECHNICIAN) {
-            // Check if job is assigned to technician
-            if (job.getTechnicianId() == null) return false;
+            if (job.getTechnicianId() == null) return true; // Can take unassigned job
             try {
                 Technician tech = TechnicianDB.getTechnicianById(job.getTechnicianId());
                 String userName = SessionManager.getCurrentUser().getUsername();
@@ -602,7 +545,7 @@ public class RepairPanel extends BasePanel {
 
     private void openCreateJobDialog() {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Intake – Create New Repair Job", true);
-        dialog.setSize(520, 460);
+        dialog.setSize(520, 500);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = new JPanel(new BorderLayout(0, 15));
@@ -629,7 +572,6 @@ public class RepairPanel extends BasePanel {
             LOGGER.log(Level.SEVERE, "Error loading intake dropdowns", ex);
         }
 
-        // Listener to load customer's registered device
         custCombo.addActionListener(e -> {
             devCombo.removeAllItems();
             CustomerItem selected = (CustomerItem) custCombo.getSelectedItem();
@@ -645,15 +587,17 @@ public class RepairPanel extends BasePanel {
             }
         });
 
-        // Trigger initial device load
         if (custCombo.getItemCount() > 0) {
             custCombo.setSelectedIndex(0);
         }
 
-        JTextArea problemArea = new JTextArea(4, 20);
+        JTextArea problemArea = new JTextArea(3, 20);
         problemArea.setLineWrap(true);
         problemArea.setWrapStyleWord(true);
         JScrollPane probScroll = new JScrollPane(problemArea);
+
+        JTextField labourField = new JTextField("0.0");
+        JTextField notesField = new JTextField();
 
         form.add(new JLabel("Customer:*"));
         form.add(custCombo);
@@ -661,6 +605,10 @@ public class RepairPanel extends BasePanel {
         form.add(devCombo);
         form.add(new JLabel("Assign Technician:"));
         form.add(techCombo);
+        form.add(new JLabel("Labour Charges (LKR):"));
+        form.add(labourField);
+        form.add(new JLabel("Initial Notes:"));
+        form.add(notesField);
         form.add(new JLabel("Initial Problem Description:*"));
         form.add(probScroll);
 
@@ -674,13 +622,15 @@ public class RepairPanel extends BasePanel {
             CustomerItem selectedCust = (CustomerItem) custCombo.getSelectedItem();
             DeviceItem selectedDev = (DeviceItem) devCombo.getSelectedItem();
             String problem = problemArea.getText().trim();
+            String labourStr = labourField.getText().trim();
+            String notes = notesField.getText().trim();
 
             if (selectedCust == null) {
                 JOptionPane.showMessageDialog(dialog, "Please select a customer.", "Validation Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
             if (selectedDev == null) {
-                JOptionPane.showMessageDialog(dialog, "Selected customer has no registered device. Please register a device in Device Registry first.", "Device Required", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(dialog, "Selected customer has no registered device. Please register a device first.", "Device Required", JOptionPane.WARNING_MESSAGE);
                 return;
             }
             if (!ValidationUtil.isNotEmpty(problem)) {
@@ -688,15 +638,28 @@ public class RepairPanel extends BasePanel {
                 return;
             }
 
+            double labour = 0.0;
+            if (!labourStr.isEmpty()) {
+                try {
+                    labour = Double.parseDouble(labourStr);
+                    if (labour < 0) throw new NumberFormatException();
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(dialog, "Labour charges must be a valid non-negative number.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
+
             try {
                 RepairJob newJob = new RepairJob(selectedCust.customerId, selectedDev.deviceId, problem);
+                newJob.setLabourCharges(labour);
+                newJob.setNotes(notes);
+
                 TechnicianItem selectedTech = (TechnicianItem) techCombo.getSelectedItem();
                 if (selectedTech != null && selectedTech.techId > 0) {
                     newJob.setTechnicianId(selectedTech.techId);
                 }
 
-                String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Receptionist";
-                int newId = RepairDB.createRepairJob(newJob, roleName);
+                int newId = RepairService.createRepairJob(newJob);
 
                 JOptionPane.showMessageDialog(dialog, "Repair Job #" + newId + " created successfully (Status: Received).", "Intake Complete", JOptionPane.INFORMATION_MESSAGE);
                 dialog.dispose();
@@ -719,7 +682,7 @@ public class RepairPanel extends BasePanel {
 
     private void openDiagnosisDialog(RepairJob job) {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Record Diagnosis for Job #" + job.getJobId(), true);
-        dialog.setSize(480, 420);
+        dialog.setSize(480, 400);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = new JPanel(new BorderLayout(0, 15));
@@ -737,8 +700,6 @@ public class RepairPanel extends BasePanel {
         JTextField estDateField = new JTextField(job.getEstimatedCompletionDate() != null ? job.getEstimatedCompletionDate() : "");
         estDateField.putClientProperty("JTextField.placeholderText", "YYYY-MM-DD");
 
-        JCheckBox advanceCheck = new JCheckBox("Advance to 'Waiting for Approval'", true);
-
         form.add(new JLabel("Diagnosis Findings:*"));
         form.add(findingsScroll);
         form.add(new JLabel("Estimated Total Cost (LKR):*"));
@@ -747,8 +708,6 @@ public class RepairPanel extends BasePanel {
         form.add(labourField);
         form.add(new JLabel("Est. Completion Date:"));
         form.add(estDateField);
-        form.add(new JLabel("Lifecycle Advance:"));
-        form.add(advanceCheck);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         JButton cancelBtn = new JButton("Cancel");
@@ -788,8 +747,12 @@ public class RepairPanel extends BasePanel {
             }
 
             try {
-                String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Technician";
-                RepairDB.recordDiagnosis(job.getJobId(), findings, estCost, labour, estDate, advanceCheck.isSelected(), roleName);
+                RepairService.recordDiagnosis(job.getJobId(), findings, estCost, labour, estDate);
+
+                // If currently RECEIVED, auto-advance to DIAGNOSING
+                if (job.getCurrentStatus() == RepairStatus.RECEIVED) {
+                    RepairService.updateStatus(job.getJobId(), RepairStatus.DIAGNOSING, "Diagnosis initiated.");
+                }
 
                 JOptionPane.showMessageDialog(dialog, "Diagnosis and estimate recorded successfully.", "Saved", JOptionPane.INFORMATION_MESSAGE);
                 dialog.dispose();
@@ -904,12 +867,10 @@ public class RepairPanel extends BasePanel {
         JButton removePartBtn = new JButton("Remove Part (Return to Stock)");
         JButton closeBtn = new JButton("Close");
 
-        UserRole role = SessionManager.getCurrentRole();
-        boolean canManageParts = (role == UserRole.ADMINISTRATOR || role == UserRole.MANAGER || role == UserRole.TECHNICIAN || role == UserRole.INVENTORY_STAFF);
         boolean jobActive = (job.getCurrentStatus() != RepairStatus.COLLECTED && job.getCurrentStatus() != RepairStatus.CANCELLED);
 
-        addPartBtn.setEnabled(canManageParts && jobActive);
-        removePartBtn.setEnabled(canManageParts && jobActive);
+        addPartBtn.setEnabled(jobActive);
+        removePartBtn.setEnabled(jobActive);
 
         addPartBtn.addActionListener(e -> showIssuePartDialog(dialog, jobId, refreshParts));
 

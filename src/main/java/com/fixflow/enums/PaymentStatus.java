@@ -2,10 +2,11 @@ package com.fixflow.enums;
 
 /**
  * Payment statuses supported by FixFlow.
- * In accordance with business rules, only full cash payment is supported.
+ * Supports partial payments and tracking outstanding balances.
  */
 public enum PaymentStatus {
-    PENDING("Pending"),
+    UNPAID("Unpaid"),
+    PARTIALLY_PAID("Partially Paid"),
     PAID("Paid");
 
     private final String displayName;
@@ -23,4 +24,3 @@ public enum PaymentStatus {
         return displayName;
     }
 }
-

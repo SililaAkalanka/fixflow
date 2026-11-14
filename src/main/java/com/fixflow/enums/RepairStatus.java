@@ -2,14 +2,15 @@ package com.fixflow.enums;
 
 /**
  * Valid lifecycle statuses for a repair job.
+ * Simplified repair lifecycle:
+ * RECEIVED -> DIAGNOSING -> IN_PROGRESS -> COMPLETED -> COLLECTED
+ *                                       \-> CANCELLED
  */
 public enum RepairStatus {
     RECEIVED("Received"),
     DIAGNOSING("Diagnosing"),
-    WAITING_FOR_APPROVAL("Waiting for Approval"),
-    WAITING_FOR_PARTS("Waiting for Parts"),
-    REPAIRING("Repairing"),
-    READY_FOR_COLLECTION("Ready for Collection"),
+    IN_PROGRESS("In Progress"),
+    COMPLETED("Completed"),
     COLLECTED("Collected"),
     CANCELLED("Cancelled");
 
@@ -37,4 +38,3 @@ public enum RepairStatus {
         return displayName;
     }
 }
-

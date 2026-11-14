@@ -1,11 +1,11 @@
 package com.fixflow.ui;
 
-import com.fixflow.database.InventoryDB;
 import com.fixflow.database.PaymentDB;
 import com.fixflow.database.RepairDB;
-import com.fixflow.enums.UserRole;
+import com.fixflow.enums.RepairStatus;
 import com.fixflow.model.Payment;
 import com.fixflow.model.RepairJob;
+import com.fixflow.service.PaymentService;
 import com.fixflow.util.PdfInvoiceGenerator;
 import com.fixflow.util.SessionManager;
 
@@ -21,13 +21,14 @@ import java.io.File;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Payment processing and PDF invoice management panel.
- * Implements Section 7.4, Section 8.12, and Section 8.13 of the FixFlow Project Specification.
+ * Supports multiple partial cash payments per repair job.
  */
 public class PaymentPanel extends BasePanel {
 
@@ -35,7 +36,7 @@ public class PaymentPanel extends BasePanel {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new Object[]{"Payment #", "Job #", "Customer", "Phone", "Device", "Labour (LKR)", "Parts (LKR)", "Total Settled (LKR)", "Method", "Status", "Payment Date"}, 0
+            new Object[]{"Payment #", "Job #", "Customer", "Phone", "Device", "Amount Paid (LKR)", "Method", "Notes", "Payment Date"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int col) {
@@ -50,7 +51,7 @@ public class PaymentPanel extends BasePanel {
     private JButton refreshBtn;
 
     public PaymentPanel() {
-        super("Payments & Invoices", "Process full cash payments, calculate change, review itemized charges, and export PDF invoices");
+        super("Payments & Invoices", "Process partial and full cash payments, track remaining balances, and export PDF invoices");
         initUI();
     }
 
@@ -99,25 +100,11 @@ public class PaymentPanel extends BasePanel {
         paymentTable.setRowHeight(26);
         paymentTable.getTableHeader().setReorderingAllowed(false);
 
-        // Center align numbers & format status
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
         centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         paymentTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
         paymentTable.getColumnModel().getColumn(1).setCellRenderer(centerRenderer);
-        paymentTable.getColumnModel().getColumn(8).setCellRenderer(centerRenderer);
-
-        paymentTable.getColumnModel().getColumn(9).setCellRenderer(new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object val, boolean isSel, boolean hasFocus, int r, int c) {
-                Component comp = super.getTableCellRendererComponent(table, val, isSel, hasFocus, r, c);
-                setHorizontalAlignment(SwingConstants.CENTER);
-                if (!isSel) {
-                    comp.setForeground(new Color(16, 124, 65));
-                    setFont(getFont().deriveFont(Font.BOLD));
-                }
-                return comp;
-            }
-        });
+        paymentTable.getColumnModel().getColumn(6).setCellRenderer(centerRenderer);
 
         JScrollPane scrollPane = new JScrollPane(paymentTable);
 
@@ -127,14 +114,7 @@ public class PaymentPanel extends BasePanel {
 
     @Override
     public void onPanelShown() {
-        applyRolePermissions();
         loadPayments();
-    }
-
-    private void applyRolePermissions() {
-        UserRole role = SessionManager.getCurrentRole();
-        boolean canManagePayments = (role == UserRole.ADMINISTRATOR || role == UserRole.MANAGER || role == UserRole.RECEPTIONIST);
-        recordPaymentBtn.setVisible(canManagePayments);
     }
 
     private void loadPayments() {
@@ -148,11 +128,9 @@ public class PaymentPanel extends BasePanel {
                         p.getCustomerName() != null ? p.getCustomerName() : "N/A",
                         p.getCustomerPhone() != null ? p.getCustomerPhone() : "N/A",
                         p.getDeviceSummary() != null ? p.getDeviceSummary() : "N/A",
-                        String.format("%.2f", p.getLabourCharges()),
-                        String.format("%.2f", p.getPartsCost()),
                         String.format("%.2f", p.getAmountPaid()),
                         p.getPaymentMethod(),
-                        p.getPaymentStatus(),
+                        p.getNotes() != null ? p.getNotes() : "–",
                         p.getPaymentDate()
                 });
             }
@@ -163,24 +141,29 @@ public class PaymentPanel extends BasePanel {
     }
 
     private void performSearch() {
-        String query = searchField.getText().trim();
+        String query = searchField.getText().trim().toLowerCase();
         try {
             tableModel.setRowCount(0);
-            List<Payment> list = PaymentDB.searchPayments(query);
+            List<Payment> list = PaymentDB.getAllPayments();
             for (Payment p : list) {
-                tableModel.addRow(new Object[]{
-                        p.getPaymentId(),
-                        p.getJobId(),
-                        p.getCustomerName() != null ? p.getCustomerName() : "N/A",
-                        p.getCustomerPhone() != null ? p.getCustomerPhone() : "N/A",
-                        p.getDeviceSummary() != null ? p.getDeviceSummary() : "N/A",
-                        String.format("%.2f", p.getLabourCharges()),
-                        String.format("%.2f", p.getPartsCost()),
-                        String.format("%.2f", p.getAmountPaid()),
-                        p.getPaymentMethod(),
-                        p.getPaymentStatus(),
-                        p.getPaymentDate()
-                });
+                boolean matches = query.isEmpty() ||
+                        String.valueOf(p.getJobId()).contains(query) ||
+                        String.valueOf(p.getPaymentId()).contains(query) ||
+                        (p.getCustomerName() != null && p.getCustomerName().toLowerCase().contains(query)) ||
+                        (p.getCustomerPhone() != null && p.getCustomerPhone().contains(query));
+                if (matches) {
+                    tableModel.addRow(new Object[]{
+                            p.getPaymentId(),
+                            p.getJobId(),
+                            p.getCustomerName() != null ? p.getCustomerName() : "N/A",
+                            p.getCustomerPhone() != null ? p.getCustomerPhone() : "N/A",
+                            p.getDeviceSummary() != null ? p.getDeviceSummary() : "N/A",
+                            String.format("%.2f", p.getAmountPaid()),
+                            p.getPaymentMethod(),
+                            p.getNotes() != null ? p.getNotes() : "–",
+                            p.getPaymentDate()
+                    });
+                }
             }
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Search failed", ex);
@@ -189,30 +172,37 @@ public class PaymentPanel extends BasePanel {
     }
 
     /**
-     * Opens the cash payment recording dialog. Can be pre-populated with a specific repair job.
+     * Opens the cash payment recording dialog with partial payment support.
      *
      * @param preselectedJob optional job to pay (or null to show picker)
      */
     public void showRecordPaymentDialog(RepairJob preselectedJob) {
-        List<RepairJob> unpaidJobs;
+        List<RepairJob> payableJobs = new ArrayList<>();
         try {
-            unpaidJobs = PaymentDB.getUnpaidCompletedJobs();
+            List<RepairJob> allJobs = RepairDB.getAllRepairJobs();
+            for (RepairJob j : allJobs) {
+                if (j.getCurrentStatus() != RepairStatus.CANCELLED) {
+                    double balance = PaymentService.getRemainingBalance(j.getJobId());
+                    if (balance > 0.001) {
+                        payableJobs.add(j);
+                    }
+                }
+            }
         } catch (SQLException ex) {
-            LOGGER.log(Level.SEVERE, "Failed to load unpaid completed jobs", ex);
+            LOGGER.log(Level.SEVERE, "Failed to load payable jobs", ex);
             JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        if (unpaidJobs.isEmpty() && preselectedJob == null) {
+        if (payableJobs.isEmpty() && preselectedJob == null) {
             JOptionPane.showMessageDialog(this,
-                    "There are currently no completed repair jobs awaiting payment settlement.\n" +
-                    "(Jobs must be in 'Ready for Collection' or 'Collected' status to record payment).",
-                    "No Unpaid Jobs", JOptionPane.INFORMATION_MESSAGE);
+                    "There are currently no repair jobs with an outstanding balance.",
+                    "No Outstanding Balance", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
         JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Record Cash Payment", Dialog.ModalityType.APPLICATION_MODAL);
-        dialog.setSize(560, 480);
+        dialog.setSize(580, 530);
         dialog.setLocationRelativeTo(this);
 
         JPanel mainPanel = new JPanel(new BorderLayout(0, 15));
@@ -222,74 +212,81 @@ public class PaymentPanel extends BasePanel {
         if (preselectedJob != null) {
             jobCombo.addItem(new JobItem(preselectedJob));
         } else {
-            for (RepairJob j : unpaidJobs) {
+            for (RepairJob j : payableJobs) {
                 jobCombo.addItem(new JobItem(j));
             }
         }
 
-        // Details Breakdown Panel
+        // Breakdown panel
         JPanel detailsPanel = new JPanel(new GridLayout(6, 2, 8, 8));
-        detailsPanel.setBorder(new TitledBorder("Payment & Cost Breakdown"));
+        detailsPanel.setBorder(new TitledBorder("Payment & Balance Overview"));
 
         JLabel custLabel = new JLabel("-");
         JLabel devLabel = new JLabel("-");
-        JLabel labourLabel = new JLabel("LKR 0.00");
-        JLabel partsLabel = new JLabel("LKR 0.00");
-        JLabel totalLabel = new JLabel("LKR 0.00");
-        totalLabel.setFont(totalLabel.getFont().deriveFont(Font.BOLD, 14f));
-        totalLabel.setForeground(new Color(0, 102, 204));
-
-        JTextField tenderedField = new JTextField(10);
-        JLabel changeLabel = new JLabel("LKR 0.00");
-        changeLabel.setFont(changeLabel.getFont().deriveFont(Font.BOLD, 13f));
-        changeLabel.setForeground(new Color(16, 124, 65));
+        JLabel totalCostLabel = new JLabel("LKR 0.00");
+        JLabel totalPaidLabel = new JLabel("LKR 0.00");
+        JLabel balanceLabel = new JLabel("LKR 0.00");
+        balanceLabel.setFont(balanceLabel.getFont().deriveFont(Font.BOLD, 14f));
+        balanceLabel.setForeground(new Color(200, 40, 40));
 
         detailsPanel.add(new JLabel("Customer:"));
         detailsPanel.add(custLabel);
         detailsPanel.add(new JLabel("Device:"));
         detailsPanel.add(devLabel);
-        detailsPanel.add(new JLabel("Labour Charges:"));
-        detailsPanel.add(labourLabel);
-        detailsPanel.add(new JLabel("Spare Parts Total:"));
-        detailsPanel.add(partsLabel);
-        detailsPanel.add(new JLabel("TOTAL DUE:"));
-        detailsPanel.add(totalLabel);
+        detailsPanel.add(new JLabel("Total Repair Cost:"));
+        detailsPanel.add(totalCostLabel);
+        detailsPanel.add(new JLabel("Already Paid:"));
+        detailsPanel.add(totalPaidLabel);
+        detailsPanel.add(new JLabel("OUTSTANDING BALANCE:"));
+        detailsPanel.add(balanceLabel);
         detailsPanel.add(new JLabel("Payment Method:"));
-        detailsPanel.add(new JLabel("CASH ONLY (§8.12)"));
+        detailsPanel.add(new JLabel("CASH"));
 
-        final double[] currentTotal = {0.0};
+        // Inputs panel
+        JTextField amountField = new JTextField(10);
+        JTextField tenderedField = new JTextField(10);
+        JTextField notesField = new JTextField(15);
+        JLabel changeLabel = new JLabel("LKR 0.00");
+        changeLabel.setFont(changeLabel.getFont().deriveFont(Font.BOLD, 13f));
+        changeLabel.setForeground(new Color(16, 124, 65));
 
-        Runnable updateCost = () -> {
+        final double[] currentBalance = {0.0};
+
+        Runnable updateJobDetails = () -> {
             JobItem selected = (JobItem) jobCombo.getSelectedItem();
             if (selected != null) {
                 RepairJob j = selected.job();
                 custLabel.setText(j.getCustomerName() != null ? j.getCustomerName() : "N/A");
                 devLabel.setText(j.getDeviceSummary() != null ? j.getDeviceSummary() : "N/A");
                 try {
-                    double labour = j.getLabourCharges();
-                    double parts = InventoryDB.getTotalPartsCostForJob(j.getJobId());
-                    double total = labour + parts;
-                    currentTotal[0] = total;
+                    double total = PaymentService.calculateTotalCost(j.getJobId());
+                    double paid = PaymentService.getTotalPaid(j.getJobId());
+                    double balance = PaymentService.getRemainingBalance(j.getJobId());
+                    currentBalance[0] = balance;
 
-                    labourLabel.setText(String.format("LKR %.2f", labour));
-                    partsLabel.setText(String.format("LKR %.2f", parts));
-                    totalLabel.setText(String.format("LKR %.2f", total));
-                    tenderedField.setText(String.format("%.2f", total));
+                    totalCostLabel.setText(String.format("LKR %.2f", total));
+                    totalPaidLabel.setText(String.format("LKR %.2f", paid));
+                    balanceLabel.setText(String.format("LKR %.2f", balance));
+
+                    // Default payment amount to full remaining balance
+                    amountField.setText(String.format("%.2f", balance));
+                    tenderedField.setText(String.format("%.2f", balance));
                 } catch (SQLException ex) {
-                    LOGGER.log(Level.SEVERE, "Failed to calculate job total cost", ex);
+                    LOGGER.log(Level.SEVERE, "Failed to load balance", ex);
                 }
             }
         };
 
-        jobCombo.addActionListener(e -> updateCost.run());
-        updateCost.run();
+        jobCombo.addActionListener(e -> updateJobDetails.run());
+        updateJobDetails.run();
 
-        // Change calculation listener
-        tenderedField.getDocument().addDocumentListener(new DocumentListener() {
+        // Calculate change on input change
+        DocumentListener changeCalcListener = new DocumentListener() {
             private void updateChange() {
                 try {
+                    double amount = Double.parseDouble(amountField.getText().trim());
                     double tendered = Double.parseDouble(tenderedField.getText().trim());
-                    double change = tendered - currentTotal[0];
+                    double change = tendered - amount;
                     if (change >= 0) {
                         changeLabel.setText(String.format("LKR %.2f", change));
                         changeLabel.setForeground(new Color(16, 124, 65));
@@ -305,14 +302,21 @@ public class PaymentPanel extends BasePanel {
             @Override public void insertUpdate(DocumentEvent e) { updateChange(); }
             @Override public void removeUpdate(DocumentEvent e) { updateChange(); }
             @Override public void changedUpdate(DocumentEvent e) { updateChange(); }
-        });
+        };
 
-        JPanel inputPanel = new JPanel(new GridLayout(2, 2, 8, 8));
-        inputPanel.setBorder(new TitledBorder("Cash Settlement"));
-        inputPanel.add(new JLabel("Cash Amount Tendered (LKR):"));
+        amountField.getDocument().addDocumentListener(changeCalcListener);
+        tenderedField.getDocument().addDocumentListener(changeCalcListener);
+
+        JPanel inputPanel = new JPanel(new GridLayout(4, 2, 8, 8));
+        inputPanel.setBorder(new TitledBorder("Cash Payment Details"));
+        inputPanel.add(new JLabel("Payment Amount (LKR):*"));
+        inputPanel.add(amountField);
+        inputPanel.add(new JLabel("Cash Tendered (LKR):"));
         inputPanel.add(tenderedField);
         inputPanel.add(new JLabel("Customer Change:"));
         inputPanel.add(changeLabel);
+        inputPanel.add(new JLabel("Payment Notes (Optional):"));
+        inputPanel.add(notesField);
 
         JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
         JPanel topSelect = new JPanel(new BorderLayout(8, 0));
@@ -328,7 +332,7 @@ public class PaymentPanel extends BasePanel {
         JButton cancelBtn = new JButton("Cancel");
         cancelBtn.addActionListener(e -> dialog.dispose());
 
-        JButton confirmBtn = new JButton("Confirm Cash Payment");
+        JButton confirmBtn = new JButton("Record Cash Payment");
         confirmBtn.setBackground(new Color(16, 124, 65));
         confirmBtn.setForeground(Color.WHITE);
         confirmBtn.setFont(confirmBtn.getFont().deriveFont(Font.BOLD));
@@ -337,14 +341,18 @@ public class PaymentPanel extends BasePanel {
             JobItem selected = (JobItem) jobCombo.getSelectedItem();
             if (selected == null) return;
 
-            double tendered;
+            double amountToPay;
             try {
-                tendered = Double.parseDouble(tenderedField.getText().trim());
-                if (tendered < currentTotal[0] - 0.001) {
+                amountToPay = Double.parseDouble(amountField.getText().trim());
+                if (amountToPay <= 0) {
+                    JOptionPane.showMessageDialog(dialog, "Payment amount must be greater than zero.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                if (amountToPay > currentBalance[0] + 0.001) {
                     JOptionPane.showMessageDialog(dialog,
-                            String.format("Cash tendered (LKR %.2f) is less than the required total amount (LKR %.2f).\n" +
-                                    "Partial payments are not permitted (Business Rule 12).", tendered, currentTotal[0]),
-                            "Insufficient Payment", JOptionPane.WARNING_MESSAGE);
+                            String.format("Payment amount (LKR %.2f) cannot exceed outstanding balance (LKR %.2f). Overpayment is not allowed.",
+                                    amountToPay, currentBalance[0]),
+                            "Overpayment Prohibited", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
             } catch (NumberFormatException ex) {
@@ -353,17 +361,15 @@ public class PaymentPanel extends BasePanel {
             }
 
             try {
-                String roleName = SessionManager.getCurrentRole() != null ? SessionManager.getCurrentRole().getDisplayName() : "Receptionist";
-                String now = LocalDateTime.now().format(DATE_FORMATTER);
-                int paymentId = PaymentDB.recordCashPayment(selected.job().getJobId(), tendered, now, roleName);
+                String notes = notesField.getText().trim();
+                int paymentId = PaymentService.recordPayment(selected.job().getJobId(), amountToPay, null, notes);
 
                 dialog.dispose();
                 loadPayments();
 
                 int askPdf = JOptionPane.showConfirmDialog(this,
-                        String.format("Payment #%d recorded successfully for LKR %.2f CASH!\n" +
-                                "Change Due: %s\n\nWould you like to generate and export the PDF invoice now?",
-                                paymentId, currentTotal[0], changeLabel.getText()),
+                        String.format("Payment #%d for LKR %.2f recorded successfully!\nChange Due: %s\n\nWould you like to export the PDF invoice / receipt now?",
+                                paymentId, amountToPay, changeLabel.getText()),
                         "Payment Complete", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE);
 
                 if (askPdf == JOptionPane.YES_OPTION) {

@@ -22,11 +22,10 @@ class UserDBTest {
     @BeforeEach
     void setUp() throws SQLException {
         String testUrl = "jdbc:sqlite:file:userdb_test?mode=memory&cache=shared";
-        DatabaseManager.setCustomJdbcUrl(testUrl);
+        DatabaseConnection.setCustomJdbcUrl(testUrl);
 
-        // Keep shared root connection open for in-memory SQLite lifespan
-        sharedMemoryConnection = DatabaseManager.getConnection();
-        DatabaseManager.initializeDatabase();
+        sharedMemoryConnection = DatabaseConnection.getConnection();
+        DatabaseInitializer.initializeDatabase();
     }
 
     @AfterEach
@@ -34,20 +33,17 @@ class UserDBTest {
         if (sharedMemoryConnection != null && !sharedMemoryConnection.isClosed()) {
             sharedMemoryConnection.close();
         }
-        DatabaseManager.setCustomJdbcUrl(null);
+        DatabaseConnection.setCustomJdbcUrl(null);
     }
 
     @Test
     @DisplayName("Verify isSetupRequired is true on empty database and false after setup")
     void testSetupRequiredCycle() throws SQLException {
-        // Initially empty
         assertTrue(UserDB.isSetupRequired(), "Setup should be required on empty database");
 
-        // Populate credentials for all 5 roles
         Map<UserRole, UserDB.RoleCredential> creds = buildTestCredentials();
         UserDB.setupAllRoles(creds);
 
-        // Now setup should not be required
         assertFalse(UserDB.isSetupRequired(), "Setup should not be required after all roles are configured");
     }
 
@@ -82,25 +78,25 @@ class UserDBTest {
     void testUpdatePassword() throws SQLException {
         UserDB.setupAllRoles(buildTestCredentials());
 
-        boolean updated = UserDB.updatePassword(UserRole.MANAGER, "newManagerPass456");
+        boolean updated = UserDB.updatePassword(UserRole.TECHNICIAN, "newTechPass456");
         assertTrue(updated);
 
         // Old password must fail
-        assertNull(UserDB.authenticate("manager", "managerPass123"));
+        assertNull(UserDB.authenticate("technician", "techPass123"));
 
         // New password must succeed
-        User manager = UserDB.authenticate("manager", "newManagerPass456");
-        assertNotNull(manager);
-        assertEquals(UserRole.MANAGER, manager.getRole());
+        User tech = UserDB.authenticate("technician", "newTechPass456");
+        assertNotNull(tech);
+        assertEquals(UserRole.TECHNICIAN, tech.getRole());
     }
 
     @Test
-    @DisplayName("Verify getAllUsers returns all 5 configured roles")
+    @DisplayName("Verify getAllUsers returns configured roles")
     void testGetAllUsers() throws SQLException {
         UserDB.setupAllRoles(buildTestCredentials());
 
         List<User> users = UserDB.getAllUsers();
-        assertEquals(5, users.size(), "Should have exactly 5 configured roles");
+        assertEquals(2, users.size(), "Should have exactly 2 configured roles");
 
         User admin = UserDB.getUserByRole(UserRole.ADMINISTRATOR);
         assertNotNull(admin);
@@ -110,11 +106,7 @@ class UserDBTest {
     private Map<UserRole, UserDB.RoleCredential> buildTestCredentials() {
         Map<UserRole, UserDB.RoleCredential> creds = new EnumMap<>(UserRole.class);
         creds.put(UserRole.ADMINISTRATOR, new UserDB.RoleCredential("admin", "adminPass123"));
-        creds.put(UserRole.MANAGER, new UserDB.RoleCredential("manager", "managerPass123"));
-        creds.put(UserRole.RECEPTIONIST, new UserDB.RoleCredential("receptionist", "recepPass123"));
         creds.put(UserRole.TECHNICIAN, new UserDB.RoleCredential("technician", "techPass123"));
-        creds.put(UserRole.INVENTORY_STAFF, new UserDB.RoleCredential("inventory", "invPass123"));
         return creds;
     }
 }
-

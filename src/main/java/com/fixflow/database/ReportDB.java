@@ -18,19 +18,21 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Data access operations for the operational dashboard and in-application reporting views.
- * Implements Section 7.8 (Dashboard) and Section 7.9 (Reports) of the FixFlow Project Specification.
+ * Data access operations for dashboard metrics and reports.
  */
 public class ReportDB {
 
     private static final Logger LOGGER = Logger.getLogger(ReportDB.class.getName());
 
+    private ReportDB() {
+        // DAO utility
+    }
+
     /**
      * Loads aggregated real-time metrics for the operational dashboard.
-     * Supports role-specific scoping (e.g. Technician assigned workload).
      *
-     * @param technicianId optional technician ID filter (or null for overall shop metrics)
-     * @return populated {@link DashboardMetrics}
+     * @param technicianId optional technician ID filter
+     * @return populated DashboardMetrics
      */
     public static DashboardMetrics getDashboardMetrics(Integer technicianId) {
         DashboardMetrics metrics = new DashboardMetrics();
@@ -51,18 +53,14 @@ public class ReportDB {
                         RepairStatus status = RepairStatus.valueOf(sStr);
                         metrics.setStatusCount(status, count);
                         if (status == RepairStatus.RECEIVED || status == RepairStatus.DIAGNOSING ||
-                            status == RepairStatus.WAITING_FOR_APPROVAL || status == RepairStatus.WAITING_FOR_PARTS ||
-                            status == RepairStatus.REPAIRING) {
+                            status == RepairStatus.IN_PROGRESS) {
                             active += count;
-                        } else if (status == RepairStatus.READY_FOR_COLLECTION) {
-                            metrics.setReadyForCollectionJobs(count);
+                        } else if (status == RepairStatus.COMPLETED) {
+                            metrics.setCompletedJobs(count);
                         } else if (status == RepairStatus.COLLECTED) {
                             metrics.setCollectedJobs(count);
                         } else if (status == RepairStatus.CANCELLED) {
                             metrics.setCancelledJobs(count);
-                        }
-                        if (status == RepairStatus.WAITING_FOR_PARTS) {
-                            metrics.setWaitingPartsJobs(count);
                         }
                     } catch (IllegalArgumentException ignored) {}
                 }
@@ -70,7 +68,22 @@ public class ReportDB {
                 metrics.setActiveJobs(active);
             }
 
-            // 2. Today's Intakes
+            // 2. Total Customers & Technicians
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM customers")) {
+                if (rs.next()) {
+                    metrics.setTotalCustomers(rs.getInt(1));
+                }
+            }
+
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM technicians WHERE is_active = 1")) {
+                if (rs.next()) {
+                    metrics.setTotalTechnicians(rs.getInt(1));
+                }
+            }
+
+            // 3. Today's Intakes
             String todaySql = "SELECT COUNT(*) FROM repair_jobs WHERE date(date_received) = date(?) OR date(created_at) = date(?)";
             try (PreparedStatement ps = conn.prepareStatement(todaySql)) {
                 ps.setString(1, today);
@@ -82,10 +95,10 @@ public class ReportDB {
                 }
             }
 
-            // 3. Technician-Specific Metrics (if assigned)
+            // 4. Technician-Specific Metrics (if assigned)
             if (technicianId != null) {
                 String techActiveSql = "SELECT COUNT(*) FROM repair_jobs WHERE technician_id = ? " +
-                                       "AND current_status IN ('DIAGNOSING', 'WAITING_FOR_APPROVAL', 'WAITING_FOR_PARTS', 'REPAIRING')";
+                                       "AND current_status IN ('RECEIVED', 'DIAGNOSING', 'IN_PROGRESS')";
                 try (PreparedStatement ps = conn.prepareStatement(techActiveSql)) {
                     ps.setInt(1, technicianId);
                     try (ResultSet rs = ps.executeQuery()) {
@@ -94,7 +107,7 @@ public class ReportDB {
                 }
 
                 String techDoneSql = "SELECT COUNT(*) FROM repair_jobs WHERE technician_id = ? " +
-                                     "AND current_status IN ('READY_FOR_COLLECTION', 'COLLECTED') AND date(updated_at) = date(?)";
+                                     "AND current_status IN ('COMPLETED', 'COLLECTED') AND date(updated_at) = date(?)";
                 try (PreparedStatement ps = conn.prepareStatement(techDoneSql)) {
                     ps.setInt(1, technicianId);
                     ps.setString(2, today);
@@ -104,34 +117,19 @@ public class ReportDB {
                 }
             }
 
-            // 4. Revenue Metrics (Settled Cash Payments)
-            String revSql = "SELECT COALESCE(SUM(amount_paid), 0.0) FROM payments WHERE payment_status = 'PAID'";
+            // 5. Total Revenue (sum of all recorded payments)
+            String revSql = "SELECT COALESCE(SUM(amount_paid), 0.0) FROM payments";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(revSql)) {
                 if (rs.next()) metrics.setTotalRevenue(rs.getDouble(1));
             }
 
-            String todayRevSql = "SELECT COALESCE(SUM(amount_paid), 0.0) FROM payments WHERE payment_status = 'PAID' AND date(payment_date) = date(?)";
+            String todayRevSql = "SELECT COALESCE(SUM(amount_paid), 0.0) FROM payments WHERE date(payment_date) = date(?)";
             try (PreparedStatement ps = conn.prepareStatement(todayRevSql)) {
                 ps.setString(1, today);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) metrics.setTodayRevenue(rs.getDouble(1));
                 }
-            }
-
-            // 5. Pending Receivables (Ready for Collection jobs not yet settled)
-            String pendingSql = "SELECT r.job_id, r.labour_charges, " +
-                                "       COALESCE((SELECT SUM(u.quantity * u.selling_price_at_time) FROM repair_part_usage u WHERE u.job_id = r.job_id), 0.0) AS parts_cost " +
-                                "FROM repair_jobs r " +
-                                "WHERE r.current_status = 'READY_FOR_COLLECTION' " +
-                                "  AND r.job_id NOT IN (SELECT job_id FROM payments WHERE payment_status = 'PAID')";
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(pendingSql)) {
-                double pending = 0.0;
-                while (rs.next()) {
-                    pending += rs.getDouble("labour_charges") + rs.getDouble("parts_cost");
-                }
-                metrics.setPendingRevenue(pending);
             }
 
             // 6. Inventory Stock & Alerts
@@ -157,13 +155,6 @@ public class ReportDB {
 
     /**
      * Generates a filtered repair jobs report.
-     *
-     * @param dateFrom optional start date (YYYY-MM-DD)
-     * @param dateTo optional end date (YYYY-MM-DD)
-     * @param status optional status filter
-     * @param technicianId optional technician ID filter
-     * @return list of matching repair jobs with cost calculations
-     * @throws SQLException if a database error occurs
      */
     public static List<RepairJob> getRepairJobsReport(String dateFrom, String dateTo, RepairStatus status, Integer technicianId)
             throws SQLException {
@@ -171,10 +162,9 @@ public class ReportDB {
         StringBuilder sql = new StringBuilder(
                 "SELECT r.job_id, r.customer_id, r.device_id, r.technician_id, r.date_received, r.initial_problem, " +
                 "       r.current_status, r.diagnosis_findings, r.estimated_cost, r.labour_charges, " +
-                "       r.estimated_completion_date, r.actual_completion_date, r.approval_status, r.approval_date, " +
-                "       r.cancellation_reason, r.original_job_id, r.created_at, r.updated_at, " +
+                "       r.estimated_completion_date, r.actual_completion_date, r.notes, r.created_at, r.updated_at, " +
                 "       c.full_name AS customer_name, c.phone AS customer_phone, " +
-                "       (d.brand || ' ' || d.model) AS device_summary, " +
+                "       (d.brand || ' ' || d.model || ' (' || d.category || ')') AS device_summary, " +
                 "       t.name AS technician_name " +
                 "FROM repair_jobs r " +
                 "JOIN customers c ON r.customer_id = c.customer_id " +
@@ -220,16 +210,11 @@ public class ReportDB {
 
     /**
      * Generates a filtered revenue & payments report.
-     *
-     * @param dateFrom optional start date (YYYY-MM-DD)
-     * @param dateTo optional end date (YYYY-MM-DD)
-     * @return list of matching payment records
-     * @throws SQLException if a database error occurs
      */
     public static List<Payment> getRevenueReport(String dateFrom, String dateTo) throws SQLException {
         StringBuilder sql = new StringBuilder(
-                "SELECT p.payment_id, p.job_id, p.payment_date, p.total_repair_cost, p.amount_paid, " +
-                "       p.payment_method, p.payment_status, p.created_at, " +
+                "SELECT p.payment_id, p.job_id, p.payment_date, p.amount_paid, " +
+                "       p.payment_method, p.notes, p.created_at, " +
                 "       c.full_name AS customer_name, c.phone AS customer_phone, " +
                 "       (d.brand || ' ' || d.model) AS device_summary, " +
                 "       t.name AS technician_name, r.labour_charges " +
@@ -265,19 +250,16 @@ public class ReportDB {
                             rs.getInt("payment_id"),
                             rs.getInt("job_id"),
                             rs.getString("payment_date"),
-                            rs.getDouble("total_repair_cost"),
                             rs.getDouble("amount_paid"),
                             rs.getString("payment_method"),
-                            rs.getString("payment_status"),
+                            rs.getString("notes"),
                             rs.getString("created_at")
                     );
                     p.setCustomerName(rs.getString("customer_name"));
                     p.setCustomerPhone(rs.getString("customer_phone"));
                     p.setDeviceSummary(rs.getString("device_summary"));
                     p.setTechnicianName(rs.getString("technician_name"));
-                    double labour = rs.getDouble("labour_charges");
-                    p.setLabourCharges(labour);
-                    p.setPartsCost(Math.max(0.0, p.getTotalRepairCost() - labour));
+                    p.setLabourCharges(rs.getDouble("labour_charges"));
                     list.add(p);
                 }
             }
@@ -287,11 +269,6 @@ public class ReportDB {
 
     /**
      * Generates a filtered inventory and valuation report.
-     *
-     * @param category optional category filter (or null for all)
-     * @param stockFilter optional stock status filter ("ALL", "LOW_STOCK", "OUT_OF_STOCK", "IN_STOCK")
-     * @return list of spare parts
-     * @throws SQLException if a database error occurs
      */
     public static List<SparePart> getInventoryReport(String category, String stockFilter) throws SQLException {
         StringBuilder sql = new StringBuilder(
@@ -342,4 +319,3 @@ public class ReportDB {
         return list;
     }
 }
-

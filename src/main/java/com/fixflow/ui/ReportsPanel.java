@@ -1,6 +1,5 @@
 package com.fixflow.ui;
 
-import com.fixflow.database.InventoryDB;
 import com.fixflow.database.ReportDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.model.Payment;
@@ -11,10 +10,12 @@ import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
-import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,8 +23,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * In-application operational and financial reporting panel.
- * Implements Section 7.9 of the FixFlow Project Specification.
+ * Operational and financial reporting panel with CSV/TXT export.
  */
 public class ReportsPanel extends BasePanel {
 
@@ -42,10 +42,9 @@ public class ReportsPanel extends BasePanel {
     private final JTextField dateFromField = new JTextField(9);
     private final JTextField dateToField = new JTextField(9);
 
-    // Specific filters
+    // 6-status filter
     private final JComboBox<String> repairStatusCombo = new JComboBox<>(new String[]{
-            "All Statuses", "Received", "Diagnosing", "Waiting for Approval",
-            "Waiting for Parts", "Repairing", "Ready for Collection", "Collected", "Cancelled"
+            "All Statuses", "Received", "Diagnosing", "In Progress", "Completed", "Collected", "Cancelled"
     });
 
     private final JComboBox<String> invStockFilterCombo = new JComboBox<>(new String[]{
@@ -57,12 +56,12 @@ public class ReportsPanel extends BasePanel {
 
     // Report Tables & Models
     private final DefaultTableModel repairTableModel = new DefaultTableModel(
-            new Object[]{"Job #", "Received", "Customer", "Phone", "Device", "Technician", "Status", "Approval", "Est. Cost (LKR)", "Labour (LKR)", "Completed"}, 0
+            new Object[]{"Job #", "Received", "Customer", "Phone", "Device", "Technician", "Status", "Est. Cost (LKR)", "Labour (LKR)", "Completed", "Notes"}, 0
     ) { @Override public boolean isCellEditable(int r, int c) { return false; } };
     private final JTable repairTable = new JTable(repairTableModel);
 
     private final DefaultTableModel revenueTableModel = new DefaultTableModel(
-            new Object[]{"Payment #", "Payment Date", "Job #", "Customer", "Phone", "Device", "Labour (LKR)", "Parts (LKR)", "Settled Total (LKR)", "Method", "Status"}, 0
+            new Object[]{"Payment #", "Payment Date", "Job #", "Customer", "Phone", "Device", "Amount Paid (LKR)", "Method", "Notes"}, 0
     ) { @Override public boolean isCellEditable(int r, int c) { return false; } };
     private final JTable revenueTable = new JTable(revenueTableModel);
 
@@ -97,14 +96,21 @@ public class ReportsPanel extends BasePanel {
         reportTypeCombo.setFont(reportTypeCombo.getFont().deriveFont(Font.BOLD));
         leftSelect.add(reportTypeCombo);
 
+        JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         JButton generateBtn = new JButton("Generate Report");
         generateBtn.setBackground(new Color(0, 102, 204));
         generateBtn.setForeground(Color.WHITE);
         generateBtn.setFont(generateBtn.getFont().deriveFont(Font.BOLD));
         generateBtn.addActionListener(e -> generateCurrentReport());
 
+        JButton exportCsvBtn = new JButton("Export CSV / TXT");
+        exportCsvBtn.addActionListener(e -> exportActiveReport());
+
+        rightActions.add(generateBtn);
+        rightActions.add(exportCsvBtn);
+
         topBar.add(leftSelect, BorderLayout.WEST);
-        topBar.add(generateBtn, BorderLayout.EAST);
+        topBar.add(rightActions, BorderLayout.EAST);
 
         // 2. Filters Sub-Bar
         JPanel filterBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
@@ -125,7 +131,7 @@ public class ReportsPanel extends BasePanel {
         repairFilterCard.add(repairStatusCombo);
 
         JPanel revenueFilterCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        revenueFilterCard.add(new JLabel("Method: CASH ONLY (§8.12)"));
+        revenueFilterCard.add(new JLabel("Method: CASH"));
 
         JPanel inventoryFilterCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         inventoryFilterCard.add(new JLabel("Stock Filter:"));
@@ -272,7 +278,7 @@ public class ReportsPanel extends BasePanel {
             double totalLabour = 0.0;
 
             for (RepairJob j : jobs) {
-                if (j.getCurrentStatus() == RepairStatus.COLLECTED || j.getCurrentStatus() == RepairStatus.READY_FOR_COLLECTION) {
+                if (j.getCurrentStatus() == RepairStatus.COLLECTED || j.getCurrentStatus() == RepairStatus.COMPLETED) {
                     completed++;
                 } else if (j.getCurrentStatus() == RepairStatus.CANCELLED) {
                     cancelled++;
@@ -291,15 +297,15 @@ public class ReportsPanel extends BasePanel {
                         j.getDeviceSummary() != null ? j.getDeviceSummary() : "N/A",
                         j.getTechnicianName() != null ? j.getTechnicianName() : "Unassigned",
                         j.getCurrentStatus().getDisplayName(),
-                        j.getApprovalStatus(),
                         String.format("%.2f", est),
                         String.format("%.2f", labour),
-                        j.getActualCompletionDate() != null ? j.getActualCompletionDate() : "-"
+                        j.getActualCompletionDate() != null ? j.getActualCompletionDate() : "-",
+                        j.getNotes() != null ? j.getNotes() : "-"
                 });
             }
 
             footerMetric1.setText("Total Jobs in Report: " + total);
-            footerMetric2.setText("Completed / Ready: " + completed);
+            footerMetric2.setText("Completed / Collected: " + completed);
             footerMetric3.setText("Cancelled: " + cancelled);
             footerMetric4.setText(String.format("Total Labour Billed: LKR %.2f", totalLabour));
 
@@ -318,13 +324,9 @@ public class ReportsPanel extends BasePanel {
             List<Payment> payments = ReportDB.getRevenueReport(from, to);
 
             int count = payments.size();
-            double totalLabour = 0.0;
-            double totalParts = 0.0;
             double grandTotal = 0.0;
 
             for (Payment p : payments) {
-                totalLabour += p.getLabourCharges();
-                totalParts += p.getPartsCost();
                 grandTotal += p.getAmountPaid();
 
                 revenueTableModel.addRow(new Object[]{
@@ -334,17 +336,15 @@ public class ReportsPanel extends BasePanel {
                         p.getCustomerName() != null ? p.getCustomerName() : "N/A",
                         p.getCustomerPhone() != null ? p.getCustomerPhone() : "N/A",
                         p.getDeviceSummary() != null ? p.getDeviceSummary() : "N/A",
-                        String.format("%.2f", p.getLabourCharges()),
-                        String.format("%.2f", p.getPartsCost()),
                         String.format("%.2f", p.getAmountPaid()),
                         p.getPaymentMethod(),
-                        p.getPaymentStatus()
+                        p.getNotes() != null ? p.getNotes() : "–"
                 });
             }
 
-            footerMetric1.setText("Settled Transactions: " + count);
-            footerMetric2.setText(String.format("Total Labour Revenue: LKR %.2f", totalLabour));
-            footerMetric3.setText(String.format("Total Spare Parts Revenue: LKR %.2f", totalParts));
+            footerMetric1.setText("Recorded Transactions: " + count);
+            footerMetric2.setText("");
+            footerMetric3.setText("");
             footerMetric4.setText(String.format("TOTAL CASH COLLECTED: LKR %.2f", grandTotal));
 
         } catch (SQLException ex) {
@@ -404,6 +404,59 @@ public class ReportsPanel extends BasePanel {
         } catch (SQLException ex) {
             LOGGER.log(Level.SEVERE, "Failed to generate inventory report", ex);
             JOptionPane.showMessageDialog(this, "Failed to generate inventory report: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void exportActiveReport() {
+        int idx = reportTypeCombo.getSelectedIndex();
+        DefaultTableModel model;
+        String defaultName;
+        if (idx == 0) {
+            model = repairTableModel;
+            defaultName = "FixFlow_Repairs_Report.csv";
+        } else if (idx == 1) {
+            model = revenueTableModel;
+            defaultName = "FixFlow_Revenue_Report.csv";
+        } else {
+            model = inventoryTableModel;
+            defaultName = "FixFlow_Inventory_Report.csv";
+        }
+
+        if (model.getRowCount() == 0) {
+            JOptionPane.showMessageDialog(this, "The current report has no rows to export.", "Empty Report", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setSelectedFile(new File(defaultName));
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File target = chooser.getSelectedFile();
+            try (PrintWriter out = new PrintWriter(new FileWriter(target))) {
+                // Header
+                int cols = model.getColumnCount();
+                for (int c = 0; c < cols; c++) {
+                    out.print("\"" + model.getColumnName(c).replace("\"", "\"\"") + "\"");
+                    if (c < cols - 1) out.print(",");
+                }
+                out.println();
+
+                // Rows
+                int rows = model.getRowCount();
+                for (int r = 0; r < rows; r++) {
+                    for (int c = 0; c < cols; c++) {
+                        Object val = model.getValueAt(r, c);
+                        String s = val != null ? val.toString() : "";
+                        out.print("\"" + s.replace("\"", "\"\"") + "\"");
+                        if (c < cols - 1) out.print(",");
+                    }
+                    out.println();
+                }
+
+                JOptionPane.showMessageDialog(this, "Report exported successfully to:\n" + target.getAbsolutePath(), "Export Complete", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                LOGGER.log(Level.SEVERE, "Failed to export report", ex);
+                JOptionPane.showMessageDialog(this, "Failed to export report: " + ex.getMessage(), "Export Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 }

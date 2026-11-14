@@ -1,14 +1,12 @@
 package com.fixflow.enums;
 
 /**
- * Predefined shared user roles for FixFlow authentication and authorization.
+ * Predefined user roles for FixFlow authentication and authorization.
+ * Simplified for Administrator and Technician roles.
  */
 public enum UserRole {
     ADMINISTRATOR("Administrator"),
-    MANAGER("Manager"),
-    RECEPTIONIST("Receptionist"),
-    TECHNICIAN("Technician"),
-    INVENTORY_STAFF("Inventory Staff");
+    TECHNICIAN("Technician");
 
     private final String displayName;
 
@@ -25,4 +23,3 @@ public enum UserRole {
         return displayName;
     }
 }
-
