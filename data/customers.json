@@ -1,0 +1,22 @@
+[ {
+  "customerId" : 1,
+  "fullName" : "Ajith Yasmith",
+  "phone" : "0772223344",
+  "email" : "kasun@example.com",
+  "address" : "45 Galle Road, Colombo 03",
+  "createdAt" : "2026-01-10 11:00:00"
+}, {
+  "customerId" : 2,
+  "fullName" : "Dilani Wickramasinghe",
+  "phone" : "0783334455",
+  "email" : "dilani@example.com",
+  "address" : "12 Kandy Road, Kiribathgoda",
+  "createdAt" : "2026-01-12 14:30:00"
+}, {
+  "customerId" : 3,
+  "fullName" : "Nuwan Pradeep",
+  "phone" : "0704445566",
+  "email" : "nuwan@example.com",
+  "address" : "88 High Level Road, Nugegoda",
+  "createdAt" : "2026-01-15 16:45:00"
+} ]

@@ -18,8 +18,7 @@
         <maven.compiler.release>21</maven.compiler.release>
 
         <!-- Dependency Versions -->
-        <flatlaf.version>3.5.4</flatlaf.version>
-        <sqlite-jdbc.version>3.47.1.0</sqlite-jdbc.version>
+        <jackson.version>2.18.1</jackson.version>
         <jbcrypt.version>0.4</jbcrypt.version>
         <pdfbox.version>3.0.3</pdfbox.version>
         <junit.jupiter.version>5.11.3</junit.jupiter.version>
@@ -32,21 +31,14 @@
     </properties>
 
     <dependencies>
-        <!-- FlatLaf: Modern Look and Feel for Java Swing -->
+        <!-- Jackson Databind: JSON file-based persistence -->
         <dependency>
-            <groupId>com.formdev</groupId>
-            <artifactId>flatlaf</artifactId>
-            <version>${flatlaf.version}</version>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
         </dependency>
 
-        <!-- SQLite JDBC Driver: Local relational database connectivity -->
-        <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>${sqlite-jdbc.version}</version>
-        </dependency>
-
-        <!-- jBCrypt: Secure password hashing for shared role credentials -->
+        <!-- jBCrypt: Secure password hashing for user credentials -->
         <dependency>
             <groupId>org.mindrot</groupId>
             <artifactId>jbcrypt</artifactId>

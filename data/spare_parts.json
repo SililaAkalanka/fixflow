@@ -1,0 +1,45 @@
+[ {
+  "partId" : 1,
+  "partName" : "Samsung S22 OLED Screen Assembly",
+  "category" : "Display",
+  "compatibleDeviceModel" : "Galaxy S22",
+  "purchaseCost" : 15000.0,
+  "sellingPrice" : 22500.0,
+  "availableQuantity" : 5,
+  "minStockLevel" : 2,
+  "createdAt" : "2026-01-08 09:00:00",
+  "updatedAt" : "2026-11-17 21:40:43"
+}, {
+  "partId" : 2,
+  "partName" : "Dell XPS 15 86Wh Battery",
+  "category" : "Battery",
+  "compatibleDeviceModel" : "Dell XPS 15",
+  "purchaseCost" : 12000.0,
+  "sellingPrice" : 18000.0,
+  "availableQuantity" : 3,
+  "minStockLevel" : 2,
+  "createdAt" : "2026-01-08 09:15:00",
+  "updatedAt" : "2026-11-17 21:40:43"
+}, {
+  "partId" : 3,
+  "partName" : "iPhone 13 Charging Port Flex",
+  "category" : "Charging",
+  "compatibleDeviceModel" : "iPhone 13",
+  "purchaseCost" : 3500.0,
+  "sellingPrice" : 6500.0,
+  "availableQuantity" : 8,
+  "minStockLevel" : 3,
+  "createdAt" : "2026-01-08 09:30:00",
+  "updatedAt" : "2026-11-17 21:40:43"
+}, {
+  "partId" : 4,
+  "partName" : "Thermal Paste Arctic MX-4 (4g)",
+  "category" : "Consumable",
+  "compatibleDeviceModel" : "Universal",
+  "purchaseCost" : 1200.0,
+  "sellingPrice" : 2000.0,
+  "availableQuantity" : 1,
+  "minStockLevel" : 3,
+  "createdAt" : "2026-01-08 09:45:00",
+  "updatedAt" : "2026-11-17 21:40:43"
+} ]

@@ -73,6 +73,7 @@ public class Device {
      *
      * @return true if currently under warranty, false otherwise
      */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isUnderWarranty() {
         if (warrantyExpiryDate == null || warrantyExpiryDate.trim().isEmpty()) {
             return false;

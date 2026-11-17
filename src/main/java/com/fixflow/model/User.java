@@ -1,16 +1,29 @@
 package com.fixflow.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fixflow.enums.UserRole;
 
 import java.util.Objects;
 
 /**
- * Model representing a shared role user account in FixFlow.
+ * Abstract base class representing a user account in FixFlow.
+ * Demonstrates the OOP principles of Abstraction, Encapsulation, and Polymorphism.
  */
-public class User {
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "role"
+)
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = AdminUser.class, name = "ADMINISTRATOR"),
+        @JsonSubTypes.Type(value = TechnicianUser.class, name = "TECHNICIAN")
+})
+public abstract class User {
 
     private int userId;
-    private UserRole role;
     private String username;
     private String passwordHash;
     private String createdAt;
@@ -19,20 +32,50 @@ public class User {
     public User() {
     }
 
-    public User(int userId, UserRole role, String username, String passwordHash, String createdAt, String updatedAt) {
+    public User(int userId, String username, String passwordHash, String createdAt, String updatedAt) {
         this.userId = userId;
-        this.role = role;
         this.username = username;
         this.passwordHash = passwordHash;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
 
-    public User(UserRole role, String username, String passwordHash) {
-        this.role = role;
+    public User(String username, String passwordHash) {
         this.username = username;
         this.passwordHash = passwordHash;
     }
+
+    /**
+     * Abstract method returning the user's role.
+     * Overridden polymorphically in concrete subclasses.
+     *
+     * @return UserRole of the user
+     */
+    public abstract UserRole getRole();
+
+    /**
+     * Abstract method checking whether this user has administrative management permissions.
+     * Demonstrates Polymorphism.
+     *
+     * @return true if permitted, false otherwise
+     */
+    public abstract boolean canManageUsers();
+
+    /**
+     * Abstract method checking whether this user has technician management permissions.
+     * Demonstrates Polymorphism.
+     *
+     * @return true if permitted, false otherwise
+     */
+    public abstract boolean canManageTechnicians();
+
+    /**
+     * Abstract method returning a descriptive summary of role permissions.
+     * Demonstrates Polymorphism.
+     *
+     * @return String describing user role permissions
+     */
+    public abstract String getRoleDescription();
 
     public int getUserId() {
         return userId;
@@ -40,14 +83,6 @@ public class User {
 
     public void setUserId(int userId) {
         this.userId = userId;
-    }
-
-    public UserRole getRole() {
-        return role;
-    }
-
-    public void setRole(UserRole role) {
-        this.role = role;
     }
 
     public String getUsername() {
@@ -87,21 +122,16 @@ public class User {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         User user = (User) o;
-        return userId == user.userId && role == user.role && Objects.equals(username, user.username);
+        return userId == user.userId && Objects.equals(username, user.username);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(userId, role, username);
+        return Objects.hash(userId, username);
     }
 
     @Override
     public String toString() {
-        return "User{" +
-                "userId=" + userId +
-                ", role=" + role +
-                ", username='" + username + '\'' +
-                '}';
+        return getRole().getDisplayName() + " [" + username + "] (User ID #" + userId + ")";
     }
 }
-

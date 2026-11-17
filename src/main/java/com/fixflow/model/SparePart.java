@@ -56,15 +56,12 @@ public class SparePart {
      *
      * @return true if available quantity <= minimum stock level
      */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isLowStock() {
         return availableQuantity <= minStockLevel;
     }
 
-    /**
-     * Checks if the part is completely out of stock.
-     *
-     * @return true if available quantity is 0
-     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isOutOfStock() {
         return availableQuantity == 0;
     }

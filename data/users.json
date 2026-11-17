@@ -1,0 +1,17 @@
+[ {
+  "userId" : 1,
+  "username" : "admin",
+  "passwordHash" : "$2a$12$5uSBT78h31/h8Y80plQ2yOASw34gtW1KZxHhtYJOf.bS8i/X93M5K",
+  "createdAt" : "2026-01-01 09:00:00",
+  "updatedAt" : "2026-11-17 21:40:43",
+  "roleDescription" : "System Administrator - Full management access across all modules, reports, and staff.",
+  "role" : "ADMINISTRATOR"
+}, {
+  "userId" : 2,
+  "username" : "tech1",
+  "passwordHash" : "$2a$12$Ano7CRuav3C7cPiis44gmuPaK9JOsxozGxl.Tld0h18aV5gNmX7ZG",
+  "createdAt" : "2026-01-01 09:00:00",
+  "updatedAt" : "2026-11-17 21:40:43",
+  "roleDescription" : "Service Technician - Operational access to repair diagnosing, parts usage, and customer devices.",
+  "role" : "TECHNICIAN"
+} ]

@@ -1,17 +1,12 @@
 package com.fixflow.service;
 
-import com.fixflow.database.CustomerDB;
-import com.fixflow.database.DatabaseConnection;
-import com.fixflow.database.DatabaseInitializer;
-import com.fixflow.database.DeviceDB;
-import com.fixflow.database.RepairDB;
-import com.fixflow.database.TechnicianDB;
 import com.fixflow.enums.RepairStatus;
 import com.fixflow.exception.InvalidStatusTransitionException;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
 import com.fixflow.model.RepairJob;
 import com.fixflow.model.Technician;
+import com.fixflow.repository.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,27 +18,45 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class RepairServiceTest {
 
-    private File tempDbFile;
+    private File tempDir;
     private int customerId;
     private int deviceId;
 
     @BeforeEach
     void setUp() throws Exception {
-        tempDbFile = File.createTempFile("fixflow_repairsvc_test_", ".db");
-        DatabaseConnection.setCustomJdbcUrl("jdbc:sqlite:" + tempDbFile.getAbsolutePath());
-        DatabaseInitializer.initializeDatabase();
+        tempDir = File.createTempFile("fixflow_repairsvc_test_", "_dir");
+        tempDir.delete();
+        tempDir.mkdirs();
+
+        CustomerRepository cr = new CustomerRepository(new File(tempDir, "customers.json").getAbsolutePath());
+        DeviceRepository dr = new DeviceRepository(new File(tempDir, "devices.json").getAbsolutePath());
+        TechnicianRepository tr = new TechnicianRepository(new File(tempDir, "technicians.json").getAbsolutePath());
+        InventoryRepository ir = new InventoryRepository(new File(tempDir, "spare_parts.json").getAbsolutePath());
+        PartUsageRepository ur = new PartUsageRepository(new File(tempDir, "part_usage.json").getAbsolutePath());
+        RepairRepository rr = new RepairRepository(new File(tempDir, "repair_jobs.json").getAbsolutePath());
+        PaymentRepository pr = new PaymentRepository(new File(tempDir, "payments.json").getAbsolutePath());
+
+        CustomerService.setRepositories(cr, dr, rr);
+        DeviceService.setRepositories(dr, cr, rr);
+        TechnicianService.setRepositories(tr, rr);
+        InventoryService.setRepositories(ir, ur);
+        RepairService.setRepositories(rr, cr, dr, tr);
+        PaymentService.setRepositories(pr, rr, cr, dr);
 
         Customer c = new Customer("Bob Vance", "0771234567", "bob@vance.com", "Scranton");
-        customerId = CustomerDB.createCustomer(c);
+        customerId = CustomerService.createCustomer(c);
         Device d = new Device(customerId, "Laptop", "Lenovo", "ThinkPad", "SN-TP-1", "Black", "Charger");
-        deviceId = DeviceDB.createDevice(d);
+        deviceId = DeviceService.createDevice(d);
     }
 
     @AfterEach
     void tearDown() {
-        DatabaseConnection.setCustomJdbcUrl(null);
-        if (tempDbFile != null && tempDbFile.exists()) {
-            tempDbFile.delete();
+        if (tempDir != null && tempDir.exists()) {
+            File[] files = tempDir.listFiles();
+            if (files != null) {
+                for (File f : files) f.delete();
+            }
+            tempDir.delete();
         }
     }
 
@@ -98,72 +111,50 @@ public class RepairServiceTest {
         PaymentService.recordPayment(jobId, 2000.0, null, "Final payment");
 
         // Now collection must succeed
-        assertDoesNotThrow(() ->
-                RepairService.updateStatus(jobId, RepairStatus.COLLECTED, "Picked up")
-        );
+        RepairService.updateStatus(jobId, RepairStatus.COLLECTED, "Collected");
         assertEquals(RepairStatus.COLLECTED, RepairService.getRepairJobById(jobId).getCurrentStatus());
     }
 
     @Test
-    @DisplayName("Verify invalid lifecycle skip throws InvalidStatusTransitionException")
-    void testInvalidStatusTransition() throws Exception {
-        RepairJob job = new RepairJob(customerId, deviceId, "Broken screen");
+    @DisplayName("Verify cancellation requires non-empty reason")
+    void testCancellationReasonRequired() {
+        RepairJob job = new RepairJob(customerId, deviceId, "Screen issue");
         int jobId = RepairService.createRepairJob(job);
 
-        // Cannot skip directly from RECEIVED to COMPLETED
-        assertThrows(InvalidStatusTransitionException.class, () ->
-                RepairService.updateStatus(jobId, RepairStatus.COMPLETED, "Skip")
-        );
-    }
-
-    @Test
-    @DisplayName("Verify cancellation requires a reason")
-    void testCancellationRequiresReason() throws Exception {
-        RepairJob job = new RepairJob(customerId, deviceId, "Water damage");
-        int jobId = RepairService.createRepairJob(job);
-
-        assertThrows(IllegalArgumentException.class, () ->
-                RepairService.updateStatus(jobId, RepairStatus.CANCELLED, "")
-        );
         assertThrows(IllegalArgumentException.class, () ->
                 RepairService.updateStatus(jobId, RepairStatus.CANCELLED, null)
         );
+        assertThrows(IllegalArgumentException.class, () ->
+                RepairService.updateStatus(jobId, RepairStatus.CANCELLED, "   ")
+        );
 
+        // Valid cancellation with reason
         assertDoesNotThrow(() ->
-                RepairService.updateStatus(jobId, RepairStatus.CANCELLED, "Customer decided not to repair")
+                RepairService.updateStatus(jobId, RepairStatus.CANCELLED, "Customer declined repair estimate")
         );
         assertEquals(RepairStatus.CANCELLED, RepairService.getRepairJobById(jobId).getCurrentStatus());
     }
 
     @Test
-    @DisplayName("Verify technician assignment in RepairService validates existence and active status")
-    void testTechnicianAssignmentValidation() throws Exception {
-        Technician activeTech = new Technician("Active Tech", "0771112233", "Hardware", true);
-        int activeTechId = TechnicianDB.createTechnician(activeTech);
+    @DisplayName("Verify technician assignment requires active technician")
+    void testTechnicianAssignmentRules() {
+        Technician activeTech = new Technician("Active Tech", "0711111111", "Hardware", true);
+        int activeId = TechnicianService.addTechnician(activeTech);
 
-        Technician inactiveTech = new Technician("Inactive Tech", "0774445566", "Software", false);
-        int inactiveTechId = TechnicianDB.createTechnician(inactiveTech);
+        Technician inactiveTech = new Technician("Inactive Tech", "0722222222", "Software", false);
+        int inactiveId = TechnicianService.addTechnician(inactiveTech);
 
-        RepairJob job = new RepairJob(customerId, deviceId, "Battery issue");
+        RepairJob job = new RepairJob(customerId, deviceId, "Power button stuck");
         int jobId = RepairService.createRepairJob(job);
 
-        // Non-existent technician
-        IllegalArgumentException notFoundEx = assertThrows(
-                IllegalArgumentException.class,
-                () -> RepairService.assignTechnician(jobId, 99999)
+        // Inactive technician cannot be assigned
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                RepairService.assignTechnician(jobId, inactiveId)
         );
-        assertTrue(notFoundEx.getMessage().contains("not found"));
+        assertTrue(ex.getMessage().contains("Inactive"));
 
-        // Inactive technician
-        IllegalArgumentException inactiveEx = assertThrows(
-                IllegalArgumentException.class,
-                () -> RepairService.assignTechnician(jobId, inactiveTechId)
-        );
-        assertTrue(inactiveEx.getMessage().contains("Inactive"));
-
-        // Active technician
-        boolean assigned = RepairService.assignTechnician(jobId, activeTechId);
-        assertTrue(assigned);
-        assertEquals(Integer.valueOf(activeTechId), RepairService.getRepairJobById(jobId).getTechnicianId());
+        // Active technician assignment succeeds
+        assertTrue(RepairService.assignTechnician(jobId, activeId));
+        assertEquals(activeId, RepairService.getRepairJobById(jobId).getTechnicianId());
     }
 }

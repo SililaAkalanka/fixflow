@@ -1,16 +1,15 @@
 package com.fixflow.util;
 
-import com.fixflow.database.CustomerDB;
-import com.fixflow.database.DeviceDB;
-import com.fixflow.database.InventoryDB;
-import com.fixflow.database.PaymentDB;
-import com.fixflow.database.RepairDB;
 import com.fixflow.model.Customer;
 import com.fixflow.model.Device;
 import com.fixflow.model.Payment;
 import com.fixflow.model.RepairJob;
 import com.fixflow.model.RepairPartUsage;
+import com.fixflow.service.CustomerService;
+import com.fixflow.service.DeviceService;
+import com.fixflow.service.InventoryService;
 import com.fixflow.service.PaymentService;
+import com.fixflow.service.RepairService;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -23,7 +22,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -51,26 +49,26 @@ public class PdfInvoiceGenerator {
         }
     }
 
-    public static void generateInvoice(int paymentId, File destinationFile) throws IOException, SQLException {
+    public static void generateInvoice(int paymentId, File destinationFile) throws IOException {
         try (FileOutputStream out = new FileOutputStream(destinationFile)) {
             generateInvoice(paymentId, out);
         }
     }
 
-    public static void generateInvoice(int paymentId, OutputStream out) throws IOException, SQLException {
-        Payment payment = PaymentDB.getPaymentById(paymentId);
+    public static void generateInvoice(int paymentId, OutputStream out) throws IOException {
+        Payment payment = PaymentService.getPaymentById(paymentId);
         if (payment == null) {
             throw new IllegalArgumentException("Payment record #" + paymentId + " not found.");
         }
 
-        RepairJob job = RepairDB.getRepairJobById(payment.getJobId());
+        RepairJob job = RepairService.getRepairJobById(payment.getJobId());
         if (job == null) {
             throw new IllegalArgumentException("Repair job #" + payment.getJobId() + " not found.");
         }
 
-        Customer customer = CustomerDB.getCustomerById(job.getCustomerId());
-        Device device = DeviceDB.getDeviceById(job.getDeviceId());
-        List<RepairPartUsage> partsUsed = InventoryDB.getPartsUsedForJob(job.getJobId());
+        Customer customer = CustomerService.getCustomerById(job.getCustomerId());
+        Device device = DeviceService.getDeviceById(job.getDeviceId());
+        List<RepairPartUsage> partsUsed = InventoryService.getPartsUsedForJob(job.getJobId());
 
         double totalCost = PaymentService.calculateTotalCost(job.getJobId());
         double totalPaid = PaymentService.getTotalPaid(job.getJobId());
